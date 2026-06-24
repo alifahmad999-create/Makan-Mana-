@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#f7fbf9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Makan Mana?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+  :root{
+    --bg:#f7fbf9;
+    --bg-soft:#ffffff;
+    --card:#ffffff;
+    --card-hi:#f0f7f4;
+    --cream:#0e2b2f;
+    --cream-dim:#4d6f6c;
+    --cream-faint:#8aa6a2;
+    --chili:#ff5d52;
+    --amber:#ff9f1c;
+    --pandan:#12b876;
+    --leaf:#0ea66a;
+    --pink:#ff5fb4;
+    --line:#e2ece8;
+    --field:#eef5f2;
+    --shadow:0 16px 40px -16px rgba(16,60,55,.28);
+    --safe-b:env(safe-area-inset-bottom,0px);
+    --safe-t:env(safe-area-inset-top,0px);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  html{background:var(--bg)}
+  body{
+    background:var(--bg);
+    color:var(--cream);
+    font-family:'Inter',system-ui,sans-serif;
+    overflow-x:hidden;
+    -webkit-font-smoothing:antialiased;
+    user-select:none;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:
+      radial-gradient(680px 460px at 88% -6%, rgba(18,184,118,.10), transparent 62%),
+      radial-gradient(620px 480px at -12% 16%, rgba(255,95,180,.07), transparent 58%),
+      radial-gradient(760px 560px at 50% 116%, rgba(255,159,28,.08), transparent 60%);
+  }
+  #app{position:relative;z-index:1;max-width:520px;margin:0 auto;min-height:100%;display:flex;flex-direction:column}
+
+  /* ---------- Header ---------- */
+  header{
+    padding:calc(var(--safe-t) + 18px) 22px 10px;
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .brand{display:flex;align-items:center;gap:9px}
+  .brand-mark{
+    width:34px;height:34px;border-radius:11px;
+    background:linear-gradient(135deg,var(--amber),var(--chili) 55%,var(--pink));
+    display:grid;place-items:center;font-size:18px;
+    box-shadow:0 5px 16px -2px rgba(255,93,82,.55);
+    animation:wobble 4s ease-in-out infinite;
+  }
+  @keyframes wobble{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(6deg)}}
+  .brand h1{font-family:'Baloo 2',cursive;font-weight:800;font-size:20px;letter-spacing:-.3px;line-height:1}
+  .brand h1 span{color:var(--amber)}
+  .loc-chip{
+    display:flex;align-items:center;gap:6px;
+    background:var(--bg-soft);border:1px solid var(--line);
+    padding:7px 12px;border-radius:20px;font-size:12px;color:var(--cream-dim);
+    font-weight:600;max-width:48%;box-shadow:0 2px 8px -4px rgba(16,60,55,.15);
+  }
+  .loc-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--cream-faint);flex:none}
+  .loc-chip.live .dot{background:var(--pandan);box-shadow:0 0 0 3px rgba(58,140,92,.25)}
+  .loc-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* ---------- Tabs ---------- */
+  .views{flex:1;position:relative}
+  .view{display:none;flex-direction:column;padding:6px 22px 140px;animation:fade .3s ease}
+  .view.on{display:flex}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  /* ---------- Spin wheel ---------- */
+  .spin-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;min-height:58vh;gap:26px}
+  .wheel{
+    position:relative;width:min(74vw,300px);aspect-ratio:1;border-radius:50%;
+    display:grid;place-items:center;cursor:pointer;border:none;
+    background:radial-gradient(circle at 50% 32%, #15c082, #0a9c6a 70%, #0a8f78);
+    box-shadow:0 24px 60px -16px rgba(18,184,118,.55), inset 0 3px 0 rgba(255,255,255,.25), inset 0 0 0 6px rgba(255,255,255,.14);
+    transition:transform .15s cubic-bezier(.34,1.56,.64,1);
+    isolation:isolate;
+    animation:float 5s ease-in-out infinite;
+  }
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+  .wheel:active{transform:scale(.95);animation:none}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+  .wheel:active{transform:scale(.95);animation:none}
+  .wheel:active{transform:scale(.96)}
+  .wheel::before{
+    content:"";position:absolute;inset:-6px;border-radius:50%;z-index:-1;
+    background:conic-gradient(var(--chili),var(--amber),var(--pandan),var(--chili));
+    opacity:.0;transition:opacity .3s;filter:blur(2px);
+  }
+  .wheel.spinning{animation:none}
+  .wheel.spinning::before{opacity:1;animation:spinring .7s linear infinite}
+  @keyframes spinring{to{transform:rotate(360deg)}}
+  .wheel-ring{
+    position:absolute;inset:16px;border-radius:50%;
+    border:3px dashed rgba(255,255,255,.35);
+  }
+  .wheel.spinning .wheel-ring{animation:spinring 3s linear infinite}
+  .wheel-label{font-family:'Baloo 2',cursive;font-weight:800;font-size:30px;line-height:1.05;text-align:center;letter-spacing:-.5px;pointer-events:none;transition:transform .2s;color:#fff;
+    -webkit-text-fill-color:#fff;text-shadow:0 2px 8px rgba(8,80,55,.35)}
+  .wheel-label small{-webkit-text-fill-color:rgba(255,255,255,.85);color:rgba(255,255,255,.85)}
+  .wheel-emoji{display:block;font-size:38px;margin-bottom:6px;-webkit-text-fill-color:initial;animation:emojibounce 2.2s ease-in-out infinite}
+  @keyframes emojibounce{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-7px) rotate(4deg)}}
+  .wheel-label small{display:block;font-size:13px;font-weight:600;color:var(--cream-dim);margin-top:8px;font-family:'Inter';letter-spacing:0}
+  .wheel.spinning .wheel-label{animation:pulse .5s ease-in-out infinite}
+  @keyframes pulse{50%{transform:scale(1.06)}}
+  .hint{color:var(--cream-faint);font-size:13px;text-align:center;max-width:240px;line-height:1.5}
+
+  /* ---------- Result card ---------- */
+  .result{
+    width:100%;background:var(--card);border:1px solid var(--line);border-radius:22px;
+    overflow:hidden;box-shadow:var(--shadow);animation:pop .4s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes pop{from{opacity:0;transform:scale(.9) translateY(10px)}to{opacity:1;transform:none}}
+  .result-top{padding:22px 20px 16px;background:linear-gradient(135deg,rgba(18,184,118,.14),rgba(255,159,28,.12))}
+  .result-eyebrow{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);margin-bottom:7px}
+  .result-name{font-family:'Baloo 2',cursive;font-weight:800;font-size:25px;line-height:1.1;letter-spacing:-.3px}
+  .result-cuisine{color:var(--cream-dim);font-size:13.5px;font-weight:500;margin-top:5px;text-transform:capitalize}
+  .result-meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line)}
+  .meta-cell{padding:15px 12px;text-align:center;border-right:1px solid var(--line)}
+  .meta-cell:last-child{border-right:none}
+  .meta-val{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;color:var(--cream)}
+  .meta-lbl{font-size:10.5px;color:var(--cream-faint);font-weight:600;letter-spacing:.4px;margin-top:3px;text-transform:uppercase}
+  .meta-val.open{color:var(--leaf)}.meta-val.closed{color:var(--chili)}
+  .result-actions{display:flex;gap:10px;padding:14px}
+  .btn{
+    flex:1;border:none;border-radius:14px;padding:13px;font-family:'Inter';font-weight:700;font-size:14px;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:transform .12s,filter .2s;
+  }
+  .btn:active{transform:scale(.96)}
+  .btn-primary{background:linear-gradient(135deg,var(--amber),var(--chili));color:#3a1206}
+  .btn-ghost{background:var(--card-hi);color:var(--cream);border:1px solid var(--line)}
+  .btn-go{background:linear-gradient(135deg,var(--pandan),#2f7a4e);color:#eafff0}
+
+  /* candidate list under result */
+  .others{margin-top:18px}
+  .others-h{font-size:12px;font-weight:700;color:var(--cream-faint);letter-spacing:.5px;text-transform:uppercase;margin:0 4px 10px}
+  .mini{
+    display:flex;align-items:center;gap:12px;background:var(--field);border:1px solid var(--line);
+    border-radius:14px;padding:11px 14px;margin-bottom:8px;cursor:pointer;transition:background .2s;
+  }
+  .mini:active{background:var(--card)}
+  .mini-info{flex:1;min-width:0}
+  .mini-name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mini-sub{font-size:11.5px;color:var(--cream-faint);text-transform:capitalize}
+  .mini-dist{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:13px;color:var(--amber);flex:none}
+
+  /* ---------- States ---------- */
+  .state{text-align:center;padding:40px 20px;color:var(--cream-dim)}
+  .state .big{font-size:40px;margin-bottom:12px}
+  .state h3{font-family:'Baloo 2';font-weight:700;font-size:18px;color:var(--cream);margin-bottom:8px}
+  .state p{font-size:14px;line-height:1.55;max-width:280px;margin:0 auto 18px}
+  .spinner{width:34px;height:34px;border:3px solid var(--line);border-top-color:var(--amber);border-radius:50%;animation:spinring .7s linear infinite;margin:0 auto 16px}
+
+  /* ---------- Bill Splitter ---------- */
+  .sec-title{font-family:'Baloo 2';font-weight:700;font-size:22px;margin:10px 0 4px;letter-spacing:-.3px}
+  .sec-sub{color:var(--cream-faint);font-size:13px;margin-bottom:18px;line-height:1.5}
+  .seg{display:flex;background:var(--card-hi);border:1px solid var(--line);border-radius:14px;padding:4px;margin-bottom:18px}
+  .seg button{flex:1;border:none;background:transparent;color:var(--cream-dim);font-family:'Inter';font-weight:600;font-size:13.5px;padding:10px;border-radius:10px;cursor:pointer;transition:.2s}
+  .seg button.on{background:#fff;color:var(--pandan);box-shadow:0 2px 10px -2px rgba(16,60,55,.18)}
+
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12px;font-weight:600;color:var(--cream-dim);margin-bottom:7px;letter-spacing:.2px}
+  .inp{
+    width:100%;background:var(--field);border:1px solid var(--line);border-radius:12px;
+    padding:13px 14px;color:var(--cream);font-family:'Inter';font-size:15px;font-weight:500;outline:none;transition:border .2s;
+  }
+  .inp:focus{border-color:var(--amber)}
+  .inp::placeholder{color:var(--cream-faint)}
+  .row{display:flex;gap:10px}
+  .row .field{flex:1}
+
+  .people-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+  .pchip{
+    display:flex;align-items:center;gap:7px;background:var(--card-hi);border:1px solid var(--line);
+    border-radius:20px;padding:7px 8px 7px 13px;font-size:13.5px;font-weight:600;
+  }
+  .pchip button{border:none;background:rgba(230,57,70,.18);color:var(--chili);width:20px;height:20px;border-radius:50%;cursor:pointer;font-size:13px;line-height:1;font-weight:700}
+
+  .item-card{background:#fff;border:1px solid var(--line);box-shadow:0 6px 18px -14px rgba(16,60,55,.22);border-radius:14px;padding:13px;margin-bottom:10px}
+  .item-head{display:flex;gap:10px;margin-bottom:10px}
+  .item-head .inp{flex:1}
+  .item-head .inp.amt{flex:none;width:96px;font-family:'JetBrains Mono';font-weight:700;text-align:right}
+  .item-del{flex:none;width:44px;border:1px solid var(--line);background:var(--card);border-radius:12px;color:var(--chili);font-size:18px;cursor:pointer}
+  .who{font-size:11px;color:var(--cream-faint);font-weight:600;margin-bottom:8px;letter-spacing:.3px;text-transform:uppercase}
+  .who-chips{display:flex;flex-wrap:wrap;gap:7px}
+  .wchip{padding:6px 12px;border-radius:18px;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--field);color:var(--cream-faint);cursor:pointer;transition:.15s}
+  .wchip.on{background:var(--amber);color:#2a1c08;border-color:var(--amber)}
+
+  .add-btn{width:100%;border:1.5px dashed var(--line);background:transparent;color:var(--cream-dim);padding:13px;border-radius:14px;font-family:'Inter';font-weight:600;font-size:14px;cursor:pointer;margin-bottom:18px;transition:.2s}
+  .add-btn:active{background:var(--bg-soft)}
+  .scan-btn{width:100%;border:none;background:linear-gradient(135deg,var(--pandan),#1f8f59);color:#eafff3;padding:14px;border-radius:14px;font-family:'Inter';font-weight:700;font-size:14px;cursor:pointer;margin-bottom:14px;transition:transform .12s;box-shadow:0 6px 18px -6px rgba(43,182,115,.5)}
+  .scan-btn:active{transform:scale(.97)}
+  .scan-btn:disabled{opacity:.6;cursor:default}
+  .scan-status{background:var(--field);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--cream-dim);display:flex;align-items:center;gap:10px}
+  .scan-status .spinner{width:18px;height:18px;border-width:2px;margin:0}
+  .charge-toggle-label{display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:600;color:var(--cream-dim)}
+  .toggle.sm{width:40px;height:23px}
+  .toggle.sm .knob{width:17px;height:17px}
+  .toggle.sm input:checked + .track + .knob{transform:translateX(17px)}
+
+  .charges{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:18px;box-shadow:0 8px 24px -16px rgba(16,60,55,.25)}
+  .charge-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}
+  .charge-row:last-child{margin-bottom:0}
+  .charge-row label{font-size:13.5px;font-weight:600;color:var(--cream-dim)}
+  .charge-input{display:flex;align-items:center;gap:6px}
+  .charge-input .inp{width:70px;padding:8px 10px;text-align:right;font-family:'JetBrains Mono';font-weight:700;font-size:14px}
+  .charge-input .pct{color:var(--cream-faint);font-size:13px;font-weight:600}
+  .preset{font-size:11px;color:var(--amber);background:rgba(244,165,34,.12);border:none;padding:5px 10px;border-radius:8px;font-weight:700;cursor:pointer;margin-left:8px}
+
+  .totals{background:linear-gradient(135deg,var(--card-hi),var(--card));border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:var(--shadow)}
+  .tot-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:14px}
+  .tot-row.sub{color:var(--cream-dim);font-size:13px}
+  .tot-row .v{font-family:'JetBrains Mono';font-weight:700}
+  .tot-divider{height:1px;background:var(--line);margin:8px 0}
+  .tot-grand{font-family:'Baloo 2';font-weight:800;font-size:20px}
+  .tot-grand .v{font-size:22px;color:var(--amber)}
+  .split-out{margin-top:14px}
+  .split-row{display:flex;justify-content:space-between;align-items:center;background:var(--field);border:1px solid var(--line);border-radius:12px;padding:12px 15px;margin-bottom:8px}
+  .split-row .nm{font-weight:700;font-size:14.5px}
+  .split-row .am{font-family:'JetBrains Mono';font-weight:700;font-size:16px;color:var(--leaf)}
+
+  /* ---------- Settings ---------- */
+  .set-group{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px 16px;margin-bottom:16px;box-shadow:0 8px 24px -16px rgba(16,60,55,.25)}
+  .set-row{display:flex;align-items:center;justify-content:space-between;padding:15px 0;border-bottom:1px solid var(--line)}
+  .set-row:last-child{border-bottom:none}
+  .set-row .lbl{font-size:14.5px;font-weight:600}
+  .set-row .desc{font-size:12px;color:var(--cream-faint);margin-top:3px;max-width:200px;line-height:1.4}
+  .slider-val{font-family:'JetBrains Mono';font-weight:700;color:var(--amber);font-size:15px}
+  input[type=range]{-webkit-appearance:none;width:100%;height:6px;border-radius:5px;background:#dce8e3;outline:none;margin-top:14px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:var(--amber);cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+  .set-slider{padding:15px 0;border-bottom:1px solid var(--line)}
+  .toggle{position:relative;width:48px;height:28px;flex:none;cursor:pointer}
+  .toggle input{display:none}
+  .toggle .track{position:absolute;inset:0;background:#cdded8;border-radius:20px;transition:.25s}
+  .toggle .knob{position:absolute;top:3px;left:3px;width:22px;height:22px;background:var(--cream);border-radius:50%;transition:.25s}
+  .toggle input:checked + .track{background:var(--pandan)}
+  .toggle input:checked + .track + .knob{transform:translateX(20px)}
+  .cuisine-grid{display:flex;flex-wrap:wrap;gap:8px;padding:14px 0 4px}
+  .cz{padding:9px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--field);color:var(--cream-dim);cursor:pointer;transition:.15s}
+  .cz.on{background:var(--chili);color:#fff;border-color:var(--chili)}
+  .premium-lock{position:relative;overflow:hidden}
+  .pro-badge{font-size:10px;font-weight:800;letter-spacing:.5px;color:var(--amber);background:rgba(255,182,39,.14);padding:4px 9px;border-radius:8px}
+  .lock-overlay{position:absolute;inset:0;background:linear-gradient(180deg,rgba(247,251,249,.55),rgba(247,251,249,.94));backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;text-align:center;padding:20px}
+  .lock-inner{max-width:240px;display:flex;flex-direction:column;align-items:center}
+
+  /* ---------- Bottom nav ---------- */
+  nav{
+    position:fixed;bottom:calc(16px + var(--safe-b));left:50%;transform:translateX(-50%);
+    width:auto;z-index:20;
+    background:rgba(255,255,255,.8);
+    backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);
+    border:1px solid rgba(255,255,255,.7);
+    border-radius:27px;
+    display:flex;gap:4px;padding:7px 8px;
+    box-shadow:0 14px 40px -10px rgba(16,60,55,.34), 0 3px 10px -2px rgba(16,60,55,.14), inset 0 1px 0 rgba(255,255,255,.95);
+  }
+  .credit{
+    position:fixed;bottom:calc(102px + var(--safe-b));left:50%;transform:translateX(-50%);
+    width:100%;max-width:520px;text-align:center;z-index:19;pointer-events:none;
+    font-size:10.5px;font-weight:500;letter-spacing:.2px;color:var(--cream-faint);opacity:.7;
+  }
+  .credit a{color:var(--pandan);text-decoration:none;font-weight:700;pointer-events:auto;opacity:.9}
+  nav button{
+    background:none;border:none;color:var(--cream-faint);
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    padding:9px 24px;cursor:pointer;font-family:'Inter';font-weight:600;font-size:11px;
+    border-radius:20px;transition:color .25s,background .25s;
+  }
+  nav button .ic{font-size:21px;line-height:1;transition:transform .2s}
+  nav button.on{color:var(--pandan);background:rgba(18,184,118,.13)}
+  nav button.on .ic{animation:navbounce .5s cubic-bezier(.34,1.56,.64,1)}
+  @keyframes navbounce{0%{transform:translateY(0) scale(1)}40%{transform:translateY(-5px) scale(1.18)}100%{transform:translateY(-1px) scale(1.08)}}
+
+  .toast{position:fixed;bottom:calc(90px + var(--safe-b));left:50%;transform:translateX(-50%) translateY(20px);background:#0e2b2f;border:1px solid #0e2b2f;color:#fff;padding:12px 20px;border-radius:30px;font-size:13.5px;font-weight:600;z-index:50;opacity:0;transition:.3s;box-shadow:0 12px 30px -8px rgba(14,43,47,.5);pointer-events:none;white-space:nowrap}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+  @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">
+      <div class="brand-mark">🍜</div>
+      <h1>Makan <span>Mana?</span></h1>
+    </div>
+    <div class="loc-chip" id="locChip"><span class="dot"></span><span id="locText">Tap to locate</span></div>
+  </header>
+
+  <div class="views">
+    <!-- ========== SPIN VIEW ========== -->
+    <section class="view on" id="v-spin">
+      <div class="spin-wrap" id="spinStage">
+        <button class="wheel" id="wheel" aria-label="Spin for a food suggestion">
+          <div class="wheel-ring"></div>
+          <div class="wheel-label" id="wheelLabel"><span class="wheel-emoji" id="wheelEmoji">🍜</span>Makan<br>Mana?<small>Tap to spin</small></div>
+        </button>
+        <p class="hint" id="spinHint">Tap the wheel and I'll pick a makan spot near you — filtered by how far you're willing to go.</p>
+      </div>
+    </section>
+
+    <!-- ========== BILL VIEW ========== -->
+    <section class="view" id="v-bill">
+      <h2 class="sec-title">Split the bill</h2>
+      <p class="sec-sub">Add who's eating, then split evenly or by what each person ordered.</p>
+
+      <div class="seg" id="billMode">
+        <button class="on" data-mode="even">Split evenly</button>
+        <button data-mode="item">By item</button>
+      </div>
+
+      <div class="field">
+        <label>Who's makan? (type a name, press enter)</label>
+        <input class="inp" id="personInput" placeholder="e.g. Alif" autocomplete="off">
+        <div class="people-chips" id="peopleChips" style="margin-top:12px"></div>
+      </div>
+
+      <!-- EVEN MODE -->
+      <div id="evenBlock">
+        <div class="field">
+          <label>Total bill (before tax & service)</label>
+          <input class="inp" id="evenSubtotal" inputmode="decimal" placeholder="0.00">
+        </div>
+      </div>
+
+      <!-- ITEM MODE -->
+      <div id="itemBlock" style="display:none">
+        <button class="scan-btn" id="scanReceipt">📷 Scan receipt to auto-fill items</button>
+        <input type="file" id="receiptFile" accept="image/*" capture="environment" style="display:none">
+        <div id="scanStatus" class="scan-status" style="display:none"></div>
+        <div id="itemList"></div>
+        <button class="add-btn" id="addItem">＋ Add an item</button>
+      </div>
+
+      <div class="charges">
+        <div class="charge-row">
+          <label class="charge-toggle-label">
+            <label class="toggle sm"><input type="checkbox" id="svcOn" checked><span class="track"></span><span class="knob"></span></label>
+            Service charge
+          </label>
+          <div class="charge-input"><input class="inp" id="svcPct" inputmode="decimal" value="10"><span class="pct">%</span></div>
+        </div>
+        <div class="charge-row">
+          <label class="charge-toggle-label">
+            <label class="toggle sm"><input type="checkbox" id="taxOn" checked><span class="track"></span><span class="knob"></span></label>
+            SST / Tax
+          </label>
+          <div class="charge-input"><input class="inp" id="taxPct" inputmode="decimal" value="6"><span class="pct">%</span></div>
+        </div>
+      </div>
+
+      <div class="totals">
+        <div class="tot-row sub"><span>Subtotal</span><span class="v" id="tSub">RM 0.00</span></div>
+        <div class="tot-row sub"><span>Service</span><span class="v" id="tSvc">RM 0.00</span></div>
+        <div class="tot-row sub"><span>SST</span><span class="v" id="tTax">RM 0.00</span></div>
+        <div class="tot-divider"></div>
+        <div class="tot-row tot-grand"><span>Total</span><span class="v" id="tGrand">RM 0.00</span></div>
+        <div class="split-out" id="splitOut"></div>
+      </div>
+    </section>
+
+    <!-- ========== SETTINGS VIEW ========== -->
+    <section class="view" id="v-set">
+      <h2 class="sec-title">Preferences</h2>
+      <p class="sec-sub">Tune how the wheel picks. Saved on this device.</p>
+
+      <div class="set-group">
+        <div class="set-slider">
+          <div class="set-row" style="border:none;padding:0">
+            <div><div class="lbl">Search radius</div><div class="desc">How far to look for spots</div></div>
+            <div class="slider-val"><span id="radVal">3</span> km</div>
+          </div>
+          <input type="range" id="radius" min="1" max="15" step="1" value="3">
+        </div>
+        <div class="set-slider" style="border:none">
+          <div class="set-row" style="border:none;padding:0">
+            <div><div class="lbl">Max drive time</div><div class="desc">Skip anything further than this</div></div>
+            <div class="slider-val"><span id="timeVal">15</span> min</div>
+          </div>
+          <input type="range" id="maxTime" min="5" max="30" step="5" value="15">
+        </div>
+      </div>
+
+      <div class="set-group">
+        <div class="set-row">
+          <div><div class="lbl">Open now only</div><div class="desc">Hide places that look closed</div></div>
+          <label class="toggle"><input type="checkbox" id="openOnly"><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="set-row">
+          <div><div class="lbl">Include shopping malls</div><div class="desc">Food courts & mall eateries</div></div>
+          <label class="toggle"><input type="checkbox" id="incMall" checked><span class="track"></span><span class="knob"></span></label>
+        </div>
+        <div class="set-row">
+          <div><div class="lbl">Include fast food</div><div class="desc">Mamak, stalls, quick bites</div></div>
+          <label class="toggle"><input type="checkbox" id="incFast" checked><span class="track"></span><span class="knob"></span></label>
+        </div>
+      </div>
+
+      <div class="set-group premium-lock">
+        <div style="padding:15px 0 0;display:flex;align-items:center;justify-content:space-between">
+          <div class="lbl">Craving anything? <span style="font-size:12px;color:var(--cream-faint);font-weight:500">(filter by type)</span></div>
+          <span class="pro-badge">🔒 PRO</span>
+        </div>
+        <div class="cuisine-grid" id="cuisineGrid"></div>
+        <div class="lock-overlay" id="cravingLock">
+          <div class="lock-inner">
+            <div style="font-size:24px;margin-bottom:6px">✨</div>
+            <div style="font-weight:700;font-size:14px;color:var(--cream)">Cravings is a Pro feature</div>
+            <div style="font-size:12px;color:var(--cream-dim);margin-top:4px">Filter the wheel by cuisine, halal & more</div>
+            <button class="btn btn-primary" id="unlockBtn" style="margin:12px auto 0;max-width:160px">Unlock Pro</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="credit">Created by <a href="https://github.com/alifvhmad" target="_blank" rel="noopener">@alifahmad</a> · Powered by Claude AI</div>
+
+  <nav>
+    <button class="on" data-view="v-spin"><span class="ic">🎯</span>Spin</button>
+    <button data-view="v-bill"><span class="ic">🧾</span>Split</button>
+    <button data-view="v-set"><span class="ic">⚙️</span>Settings</button>
+  </nav>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ============================================================
+   MAKAN MANA?  — single-file PWA
+   No backend, no API keys. OSM Overpass + OSRM + browser geo.
+   ============================================================ */
+
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const fmt = n => 'RM ' + (Math.round(n*100)/100).toFixed(2);
+
+/* ---------- persisted settings ---------- */
+const DEFAULTS = { radius:3, maxTime:15, openOnly:false, incMall:true, incFast:true, cuisines:[], pro:false };
+let settings = load('mm_settings', DEFAULTS);
+function load(k,f){ try{ return {...f, ...JSON.parse(localStorage.getItem(k)||'{}')}; }catch(e){ return {...f}; } }
+function saveSettings(){ try{ localStorage.setItem('mm_settings', JSON.stringify(settings)); }catch(e){} }
+
+let userPos = null;          // {lat,lon}
+let lastResults = [];        // sorted candidates
+
+/* ---------- toast ---------- */
+let toastT;
+function toast(msg){
+  const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2400);
+}
+
+/* ---------- haptics ---------- */
+const buzz = ms => { try{ navigator.vibrate && navigator.vibrate(ms); }catch(e){} };
+
+/* ============================================================
+   NAVIGATION
+   ============================================================ */
+$$('nav button').forEach(b=>{
+  b.onclick=()=>{
+    $$('nav button').forEach(x=>x.classList.remove('on'));
+    $$('.view').forEach(v=>v.classList.remove('on'));
+    b.classList.add('on');
+    $('#'+b.dataset.view).classList.add('on');
+    buzz(8);
+  };
+});
+
+/* ============================================================
+   LOCATION
+   ============================================================ */
+$('#locChip').onclick = ()=> locate(true);
+
+function locate(announce){
+  if(!navigator.geolocation){ toast('Geolocation not supported'); return; }
+  $('#locText').textContent='Locating…';
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      userPos={lat:pos.coords.latitude, lon:pos.coords.longitude};
+      $('#locChip').classList.add('live');
+      reverseGeo(userPos);
+      if(announce) toast('Got your location 📍');
+    },
+    err=>{
+      $('#locText').textContent='Location off';
+      $('#locChip').classList.remove('live');
+      toast(err.code===1?'Location permission denied':'Could not get location');
+    },
+    {enableHighAccuracy:true, timeout:10000, maximumAge:60000}
+  );
+}
+
+async function reverseGeo(p){
+  $('#locText').textContent='Near you';
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${p.lat}&lon=${p.lon}&zoom=14`,
+      {headers:{'Accept':'application/json'}});
+    const d=await r.json();
+    const a=d.address||{};
+    const name=a.suburb||a.neighbourhood||a.town||a.city_district||a.village||a.city||'Near you';
+    $('#locText').textContent=name;
+  }catch(e){ /* keep "Near you" */ }
+}
+
+/* ============================================================
+   SPIN  →  Overpass query + OSRM distances
+   ============================================================ */
+const wheel=$('#wheel'), wheelLabel=$('#wheelLabel'), stage=$('#spinStage');
+const FLASH=['var(--chili)','var(--amber)','var(--pandan)','var(--leaf)'];
+let flashTimer=null, spinning=false;
+
+wheel.onclick=()=>{ if(!spinning) doSpin(); };
+
+async function doSpin(){
+  if(!userPos){
+    toast('Getting your location first…');
+    locate(false);
+    // wait briefly for a fix
+    await new Promise(r=>setTimeout(r,1800));
+    if(!userPos){ toast('Need location to find food 📍'); return; }
+  }
+  spinning=true;
+  buzz(12);
+  startFlash();
+
+  try{
+    const places = await fetchPlaces(userPos);
+    if(!places.length){
+      stopFlash(); spinning=false;
+      renderEmpty('No spots found','Try a bigger radius in Settings, or move the search filters.');
+      return;
+    }
+    // compute road distances for the nearest N (cap to keep it light)
+    const near = places
+      .map(p=>({...p, crow:haversine(userPos,p)}))
+      .sort((a,b)=>a.crow-b.crow)
+      .slice(0,12);
+
+    const withRoad = await addRoadDistances(userPos, near);
+
+    // filter by max drive time + open-now ('30+' notch = no time limit)
+    const noTimeLimit = settings.maxTime>=30;
+    let pool = noTimeLimit ? withRoad.slice() : withRoad.filter(p=> p.mins<=settings.maxTime);
+    if(settings.openOnly) pool = pool.filter(p=> p.openState!=='closed');
+    if(!pool.length) pool = withRoad;  // fall back so the wheel always lands
+
+    pool.sort((a,b)=>a.mins-b.mins);
+    lastResults = pool;
+
+    // pick a weighted-random winner (favor closer, but keep it fun)
+    const winner = weightedPick(pool);
+
+    // let the flash run a beat for drama
+    await new Promise(r=>setTimeout(r, 650));
+    stopFlash();
+    spinning=false;
+    renderResult(winner, pool.filter(p=>p!==winner).slice(0,4));
+    buzz([20,40,30]);
+  }catch(err){
+    stopFlash(); spinning=false;
+    renderEmpty('Hmm, no luck', 'The free map service might be busy. Give it another tap in a moment.');
+  }
+}
+
+function startFlash(){
+  wheel.classList.add('spinning');
+  wheelLabel.innerHTML='Cari…<small>Finding makan</small>';
+  let i=0;
+  flashTimer=setInterval(()=>{
+    wheel.style.background=`radial-gradient(circle at 50% 40%, ${FLASH[i%FLASH.length]}, var(--card))`;
+    i++;
+  },110);
+}
+function stopFlash(){
+  clearInterval(flashTimer);
+  wheel.style.background='';
+  wheel.classList.remove('spinning');
+}
+
+/* ---- Overpass: nearby food amenities ---- */
+async function fetchPlaces(p){
+  // at the max slider notch, treat radius as "15km+" → widen the actual search
+  const km = (settings.radius>=15) ? 25 : (settings.radius||3);
+  const r = km*1000;
+  const amen=['restaurant'];
+  if(settings.incFast) amen.push('fast_food','food_court');
+  const amenRe = amen.join('|');
+  let cuisineFilter='';
+  if(settings.pro && settings.cuisines && settings.cuisines.length){
+    const cz = settings.cuisines.join('|');
+    cuisineFilter = `["cuisine"~"${cz}",i]`;
+  }
+  // base food amenities
+  let blocks = `
+      node["amenity"~"^(${amenRe})$"]["name"]${cuisineFilter}(around:${r},${p.lat},${p.lon});
+      way["amenity"~"^(${amenRe})$"]["name"]${cuisineFilter}(around:${r},${p.lat},${p.lon});`;
+  // shopping malls (their eateries / food courts) when enabled
+  if(settings.incMall && !cuisineFilter){
+    blocks += `
+      node["shop"="mall"]["name"](around:${r},${p.lat},${p.lon});
+      way["shop"="mall"]["name"](around:${r},${p.lat},${p.lon});`;
+  }
+  const q=`[out:json][timeout:25];
+    (${blocks}
+    );
+    out center 60;`;
+  const endpoints=[
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter'
+  ];
+  let data=null;
+  for(const ep of endpoints){
+    try{
+      const res=await fetch(ep,{method:'POST',body:'data='+encodeURIComponent(q)});
+      if(!res.ok) continue;
+      data=await res.json(); break;
+    }catch(e){ /* try next endpoint */ }
+  }
+  if(!data) throw new Error('overpass');
+  return (data.elements||[]).map(el=>{
+    const t=el.tags||{};
+    const lat=el.lat ?? (el.center&&el.center.lat);
+    const lon=el.lon ?? (el.center&&el.center.lon);
+    if(lat==null||lon==null) return null;
+    const amenity = t.amenity || (t.shop==='mall' ? 'mall' : '');
+    return {
+      name:t.name,
+      lat, lon,
+      cuisine:(t.cuisine||'').replace(/[_;]/g,' ').split(',')[0]||'',
+      amenity,
+      hours:t.opening_hours||'',
+      openState:openNow(t.opening_hours)
+    };
+  }).filter(Boolean);
+}
+
+/* ---- OSRM: real driving distance/time for a small batch ---- */
+async function addRoadDistances(origin, list){
+  // OSRM "table" service: 1 source → many destinations, single request
+  const coords=[`${origin.lon},${origin.lat}`, ...list.map(p=>`${p.lon},${p.lat}`)].join(';');
+  const url=`https://router.project-osrm.org/table/v1/driving/${coords}?sources=0&annotations=distance,duration`;
+  try{
+    const r=await fetch(url);
+    if(r.ok){
+      const d=await r.json();
+      const dur=d.durations?.[0]||[], dist=d.distances?.[0]||[];
+      return list.map((p,i)=>({
+        ...p,
+        mins: dur[i+1]!=null ? Math.max(1,Math.round(dur[i+1]/60)) : Math.round(p.crow/600),
+        km:   dist[i+1]!=null ? dist[i+1]/1000 : p.crow/1000
+      }));
+    }
+  }catch(e){ /* fall back to crow-flies estimate */ }
+  return list.map(p=>({...p, mins:Math.max(1,Math.round(p.crow/600)), km:p.crow/1000}));
+}
+
+/* ---- helpers ---- */
+function haversine(a,b){
+  const R=6371000,toR=x=>x*Math.PI/180;
+  const dLat=toR(b.lat-a.lat),dLon=toR(b.lon-a.lon);
+  const s=Math.sin(dLat/2)**2+Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+function weightedPick(arr){
+  // weight inversely to drive time so near places win more often, but not always
+  const w=arr.map(p=>1/Math.max(2,p.mins));
+  const sum=w.reduce((a,b)=>a+b,0);
+  let r=Math.random()*sum;
+  for(let i=0;i<arr.length;i++){ r-=w[i]; if(r<=0) return arr[i]; }
+  return arr[0];
+}
+function openNow(hours){
+  if(!hours) return 'unknown';
+  if(/24\/7/.test(hours)) return 'open';
+  // light heuristic parser: "Mo-Su 08:00-22:00" style. Not exhaustive.
+  try{
+    const now=new Date();
+    const day=['Su','Mo','Tu','We','Th','Fr','Sa'][now.getDay()];
+    const mins=now.getHours()*60+now.getMinutes();
+    const parts=hours.split(';');
+    for(const part of parts){
+      const m=part.match(/([A-Za-z,\-]+)?\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+      if(!m) continue;
+      const dayspec=m[1]||'Mo-Su';
+      if(!dayMatch(dayspec,day)) continue;
+      const start=+m[2]*60+ +m[3], end=+m[4]*60+ +m[5];
+      const within = end>start ? (mins>=start&&mins<=end) : (mins>=start||mins<=end);
+      if(within) return 'open';
+    }
+    return 'closed';
+  }catch(e){ return 'unknown'; }
+}
+function dayMatch(spec,day){
+  const order=['Mo','Tu','We','Th','Fr','Sa','Su'];
+  if(/Mo-Su|Mo-Sa.*Su|daily/i.test(spec)) return true;
+  for(const token of spec.split(',')){
+    if(token.includes('-')){
+      const [a,b]=token.split('-');
+      const ia=order.indexOf(a),ib=order.indexOf(b),id=order.indexOf(day);
+      if(ia<0||ib<0||id<0) continue;
+      if(ia<=ib){ if(id>=ia&&id<=ib) return true; }
+      else { if(id>=ia||id<=ib) return true; }
+    } else if(token===day) return true;
+  }
+  return false;
+}
+
+/* ---- render ---- */
+function renderResult(w, others){
+  const openLbl = w.openState==='open'?'<span class="meta-val open">Open</span>'
+                : w.openState==='closed'?'<span class="meta-val closed">Closed</span>'
+                : '<span class="meta-val">—</span>';
+  const mapUrl=`https://www.google.com/maps/dir/?api=1&destination=${w.lat},${w.lon}`;
+  stage.innerHTML=`
+    <div class="result">
+      <div class="result-top">
+        <div class="result-eyebrow">Tonight you makan at</div>
+        <div class="result-name">${esc(w.name)}</div>
+        ${w.cuisine?`<div class="result-cuisine">${esc(w.cuisine)} · ${labelAmenity(w.amenity)}</div>`:`<div class="result-cuisine">${labelAmenity(w.amenity)}</div>`}
+      </div>
+      <div class="result-meta">
+        <div class="meta-cell"><div class="meta-val">${w.km.toFixed(1)}</div><div class="meta-lbl">km away</div></div>
+        <div class="meta-cell"><div class="meta-val">${w.mins}</div><div class="meta-lbl">min drive</div></div>
+        <div class="meta-cell">${openLbl}<div class="meta-lbl">status</div></div>
+      </div>
+      <div class="result-actions">
+        <button class="btn btn-ghost" id="reSpin">↻ Spin again</button>
+        <a class="btn btn-go" href="${mapUrl}" target="_blank" rel="noopener">Go ➜</a>
+      </div>
+    </div>
+    ${others.length?`<div class="others">
+      <div class="others-h">Or one of these</div>
+      ${others.map(o=>`<div class="mini" data-lat="${o.lat}" data-lon="${o.lon}">
+        <div class="mini-info"><div class="mini-name">${esc(o.name)}</div>
+        <div class="mini-sub">${o.cuisine?esc(o.cuisine)+' · ':''}${o.mins} min</div></div>
+        <div class="mini-dist">${o.km.toFixed(1)} km</div>
+      </div>`).join('')}
+    </div>`:''}
+  `;
+  $('#reSpin').onclick=()=>{ resetWheel(); setTimeout(doSpin,180); };
+  $$('.mini').forEach(m=>{
+    m.onclick=()=>{
+      const lat=m.dataset.lat, lon=m.dataset.lon;
+      window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`,'_blank');
+    };
+  });
+}
+function renderEmpty(title,msg){
+  stage.innerHTML=`<div class="state">
+    <div class="big">🤔</div><h3>${title}</h3><p>${msg}</p>
+    <button class="btn btn-primary" id="retry" style="max-width:200px;margin:0 auto">Try again</button>
+  </div>`;
+  $('#retry').onclick=resetWheel;
+}
+const IDLE_EMOJI=['🍜','🍛','🍚','🍢','🥘','🍤','🧋','🍙','🌶️','🥟'];
+function resetWheel(){
+  const em=IDLE_EMOJI[Math.floor(Math.random()*IDLE_EMOJI.length)];
+  stage.innerHTML=`
+    <button class="wheel" id="wheel" aria-label="Spin for a food suggestion">
+      <div class="wheel-ring"></div>
+      <div class="wheel-label" id="wheelLabel"><span class="wheel-emoji">${em}</span>Makan<br>Mana?<small>Tap to spin</small></div>
+    </button>
+    <p class="hint">Tap the wheel and I'll pick a makan spot near you.</p>`;
+  bindWheel();
+}
+function bindWheel(){
+  const w=$('#wheel');
+  if(w) w.onclick=()=>{ if(!spinning) doSpin(); };
+}
+function labelAmenity(a){
+  return ({restaurant:'Restaurant',cafe:'Café',fast_food:'Quick bite',food_court:'Food court',mall:'Shopping mall'})[a]||'Makan spot';
+}
+function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ============================================================
+   BILL SPLITTER
+   ============================================================ */
+let people=[];        // [{id,name}]
+let items=[];         // [{id,name,amt,who:[ids]}]
+let billMode='even';
+let pid=1, iid=1;
+
+const personInput=$('#personInput');
+personInput.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){ addPerson(personInput.value.trim()); personInput.value=''; }
+});
+function addPerson(name){
+  if(!name) return;
+  people.push({id:pid++, name});
+  renderPeople(); renderItems(); recalc();
+}
+function removePerson(id){
+  people=people.filter(p=>p.id!==id);
+  items.forEach(it=> it.who=it.who.filter(w=>w!==id));
+  renderPeople(); renderItems(); recalc();
+}
+function renderPeople(){
+  $('#peopleChips').innerHTML = people.map(p=>
+    `<div class="pchip">${esc(p.name)}<button data-id="${p.id}" aria-label="Remove">×</button></div>`).join('');
+  $$('#peopleChips .pchip button').forEach(b=> b.onclick=()=>removePerson(+b.dataset.id));
+}
+
+/* mode switch */
+$$('#billMode button').forEach(b=>{
+  b.onclick=()=>{
+    $$('#billMode button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); billMode=b.dataset.mode;
+    $('#evenBlock').style.display = billMode==='even'?'block':'none';
+    $('#itemBlock').style.display = billMode==='item'?'block':'none';
+    if(billMode==='item' && !items.length) addItem();
+    recalc();
+  };
+});
+
+/* items */
+$('#addItem').onclick=()=>addItem();
+
+/* ---- receipt scan (Tesseract.js, fully client-side) ---- */
+$('#scanReceipt').onclick=()=> $('#receiptFile').click();
+$('#receiptFile').addEventListener('change', async e=>{
+  const file=e.target.files&&e.target.files[0];
+  e.target.value='';            // allow re-pick of same file
+  if(!file) return;
+  await scanReceipt(file);
+});
+
+async function scanReceipt(file){
+  const status=$('#scanStatus'), btn=$('#scanReceipt');
+  status.style.display='flex';
+  btn.disabled=true;
+  status.innerHTML='<div class="spinner"></div><span>Reading receipt… first scan downloads the reader (~10MB), please wait.</span>';
+  try{
+    if(typeof Tesseract==='undefined') throw new Error('OCR library not loaded');
+    const { data } = await Tesseract.recognize(file, 'eng', {
+      logger:m=>{
+        if(m.status==='recognizing text'){
+          status.innerHTML=`<div class="spinner"></div><span>Reading receipt… ${Math.round(m.progress*100)}%</span>`;
+        }
+      }
+    });
+    const parsed = parseReceipt(data.text||'');
+    if(!parsed.length){
+      status.innerHTML='⚠️ <span>Couldn\u2019t read items clearly. Try a brighter, flatter photo — or add items manually below.</span>';
+      return;
+    }
+    // switch to item mode and load parsed items
+    $$('#billMode button').forEach(x=>x.classList.remove('on'));
+    document.querySelector('#billMode button[data-mode="item"]').classList.add('on');
+    billMode='item';
+    $('#evenBlock').style.display='none';
+    $('#itemBlock').style.display='block';
+
+    items = parsed.map(p=>({id:iid++, name:p.name, amt:p.amt.toFixed(2), who:people.map(pp=>pp.id)}));
+    renderItems(); recalc();
+    status.innerHTML=`✅ <span>Found ${parsed.length} item${parsed.length>1?'s':''}. Check the amounts and assign who shared what.</span>`;
+    buzz([15,30,15]);
+    setTimeout(()=>{ status.style.display='none'; }, 5000);
+  }catch(err){
+    status.innerHTML='⚠️ <span>Scan failed. You can still add items manually below.</span>';
+  }finally{
+    btn.disabled=false;
+  }
+}
+
+/* Parse OCR text → [{name, amt}]. Heuristic, tuned for MY receipts. */
+function parseReceipt(text){
+  const lines=text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  const out=[];
+  const skip=/\b(subtotal|sub total|total|tax|sst|gst|service|svc|charge|change|cash|round|rounding|balance|amount due|discount|qty|table|receipt|invoice|tel|gst no|reg|thank|visit|card|visa|master|tng|grab|approval)\b/i;
+  // money at end of line, RM optional, e.g. "Nasi Goreng 12.90" or "Teh Tarik   RM 2.50"
+  const moneyRe=/(?:rm)?\s*(\d{1,4}[.,]\d{2})\s*$/i;
+  for(const line of lines){
+    if(skip.test(line)) continue;
+    const m=line.match(moneyRe);
+    if(!m) continue;
+    let amt=parseFloat(m[1].replace(',','.'));
+    if(!isFinite(amt)||amt<=0||amt>9999) continue;
+    let name=line.slice(0,m.index).replace(/[\.\-\u2022x*]+$/,'').trim();
+    // strip leading qty like "2 " or "2x "
+    name=name.replace(/^\d+\s*[xX]?\s+/,'').trim();
+    // drop obvious noise / pure numbers
+    if(name.length<2 || /^\d+$/.test(name)) continue;
+    if(name.length>40) name=name.slice(0,40);
+    out.push({name, amt});
+  }
+  return out.slice(0,30);   // sanity cap
+}
+
+function addItem(){
+  items.push({id:iid++, name:'', amt:'', who:people.map(p=>p.id)});
+  renderItems(); recalc();
+}
+function renderItems(){
+  $('#itemList').innerHTML = items.map(it=>`
+    <div class="item-card" data-id="${it.id}">
+      <div class="item-head">
+        <input class="inp iname" placeholder="Item (e.g. Nasi Lemak)" value="${esc(it.name)}">
+        <input class="inp amt iamt" inputmode="decimal" placeholder="0.00" value="${it.amt}">
+        <button class="item-del" aria-label="Delete item">×</button>
+      </div>
+      <div class="who">Shared by</div>
+      <div class="who-chips">
+        ${people.length? people.map(p=>`<div class="wchip ${it.who.includes(p.id)?'on':''}" data-pid="${p.id}">${esc(p.name)}</div>`).join('')
+          : '<span style="font-size:12px;color:var(--cream-faint)">Add people above first</span>'}
+      </div>
+    </div>`).join('');
+
+  $$('#itemList .item-card').forEach(card=>{
+    const id=+card.dataset.id;
+    const it=items.find(x=>x.id===id);
+    card.querySelector('.iname').oninput=e=>{ it.name=e.target.value; };
+    card.querySelector('.iamt').oninput=e=>{ it.amt=e.target.value; recalc(); };
+    card.querySelector('.item-del').onclick=()=>{ items=items.filter(x=>x.id!==id); renderItems(); recalc(); };
+    card.querySelectorAll('.wchip').forEach(ch=>{
+      ch.onclick=()=>{
+        const pidv=+ch.dataset.pid;
+        if(it.who.includes(pidv)) it.who=it.who.filter(w=>w!==pidv);
+        else it.who.push(pidv);
+        ch.classList.toggle('on'); recalc();
+      };
+    });
+  });
+}
+
+/* charges toggles */
+$('#svcOn').addEventListener('change',recalc);
+$('#taxOn').addEventListener('change',recalc);
+['evenSubtotal','svcPct','taxPct'].forEach(idv=>{
+  $('#'+idv).addEventListener('input',recalc);
+});
+
+/* the math */
+function recalc(){
+  const num=v=>{ const n=parseFloat(v); return isFinite(n)?n:0; };
+  let subtotal=0;
+  const perPerson={}; people.forEach(p=>perPerson[p.id]=0);
+
+  if(billMode==='even'){
+    subtotal=num($('#evenSubtotal').value);
+    const n=people.length||1;
+    people.forEach(p=> perPerson[p.id]=subtotal/n);
+  } else {
+    items.forEach(it=>{
+      const amt=num(it.amt); subtotal+=amt;
+      const sharers=it.who.length?it.who:people.map(p=>p.id);
+      sharers.forEach(w=>{ if(perPerson[w]!=null) perPerson[w]+=amt/sharers.length; });
+    });
+  }
+
+  const svc = $('#svcOn').checked ? subtotal*num($('#svcPct').value)/100 : 0;
+  const tax = $('#taxOn').checked ? (subtotal+svc)*num($('#taxPct').value)/100 : 0;   // SST on subtotal+service
+  const grand=subtotal+svc+tax;
+  const mult = subtotal>0 ? grand/subtotal : 0;
+
+  $('#tSub').textContent=fmt(subtotal);
+  $('#tSvc').textContent=fmt(svc);
+  $('#tTax').textContent=fmt(tax);
+  $('#tGrand').textContent=fmt(grand);
+
+  if(!people.length){
+    $('#splitOut').innerHTML='<div style="text-align:center;color:var(--cream-faint);font-size:13px;padding:12px 0">Add people to see who owes what</div>';
+    return;
+  }
+  $('#splitOut').innerHTML = people.map(p=>
+    `<div class="split-row"><span class="nm">${esc(p.name)}</span><span class="am">${fmt(perPerson[p.id]*mult)}</span></div>`
+  ).join('');
+}
+
+/* ============================================================
+   SETTINGS
+   ============================================================ */
+const CUISINES=['halal','malaysian','chinese','indian','japanese','korean','thai','western','seafood','noodle','burger','coffee_shop'];
+function buildCuisines(){
+  $('#cuisineGrid').innerHTML=CUISINES.map(c=>
+    `<div class="cz ${settings.cuisines.includes(c)?'on':''}" data-c="${c}">${c.replace('_',' ')}</div>`).join('');
+  $$('#cuisineGrid .cz').forEach(el=>{
+    el.onclick=()=>{
+      const c=el.dataset.c;
+      if(settings.cuisines.includes(c)) settings.cuisines=settings.cuisines.filter(x=>x!==c);
+      else settings.cuisines.push(c);
+      el.classList.toggle('on'); saveSettings();
+    };
+  });
+}
+function bindSettings(){
+  $('#radius').value=settings.radius; $('#radVal').textContent=radLabel(settings.radius);
+  $('#maxTime').value=settings.maxTime; $('#timeVal').textContent=timeLabel(settings.maxTime);
+  $('#openOnly').checked=settings.openOnly;
+  $('#incMall').checked=settings.incMall;
+  $('#incFast').checked=settings.incFast;
+
+  $('#radius').oninput=e=>{ settings.radius=+e.target.value; $('#radVal').textContent=radLabel(settings.radius); saveSettings(); };
+  $('#maxTime').oninput=e=>{ settings.maxTime=+e.target.value; $('#timeVal').textContent=timeLabel(settings.maxTime); saveSettings(); };
+  $('#openOnly').onchange=e=>{ settings.openOnly=e.target.checked; saveSettings(); };
+  $('#incMall').onchange=e=>{ settings.incMall=e.target.checked; saveSettings(); };
+  $('#incFast').onchange=e=>{ settings.incFast=e.target.checked; saveSettings(); };
+
+  // premium lock for cravings
+  applyProState();
+  $('#unlockBtn').onclick=()=>{
+    toast('Pro coming soon — stay tuned! ✨');
+    // dev shortcut: uncomment to test unlocked state
+    // settings.pro=true; saveSettings(); applyProState();
+  };
+}
+const RAD_MAX=15, TIME_MAX=30;
+function radLabel(v){ return v>=RAD_MAX ? RAD_MAX+'+' : v; }
+function timeLabel(v){ return v>=TIME_MAX ? TIME_MAX+'+' : v; }
+function applyProState(){
+  const lock=$('#cravingLock');
+  if(settings.pro){ lock.style.display='none'; }
+  else { lock.style.display='flex'; }
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+buildCuisines();
+bindSettings();
+recalc();
+locate(false);   // soft attempt on load (will prompt for permission)
+
+/* PWA install: inline service worker via blob (works from single file) */
+if('serviceWorker' in navigator){
+  const swCode=`self.addEventListener('install',e=>self.skipWaiting());
+    self.addEventListener('activate',e=>self.clients.claim());
+    self.addEventListener('fetch',e=>{});`;
+  try{
+    const blob=new Blob([swCode],{type:'text/javascript'});
+    navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(()=>{});
+  }catch(e){}
+}
+</script>
+</body>
+</html>
