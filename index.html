@@ -93,7 +93,7 @@
     display:grid;place-items:center;cursor:pointer;border:none;
     background:radial-gradient(circle at 50% 32%, #15c082, #0a9c6a 70%, #0a8f78);
     box-shadow:0 24px 60px -16px rgba(18,184,118,.55), inset 0 3px 0 rgba(255,255,255,.25), inset 0 0 0 6px rgba(255,255,255,.14);
-    transition:transform .15s cubic-bezier(.34,1.56,.64,1), background .09s linear, box-shadow .09s linear;
+    transition:transform .15s cubic-bezier(.34,1.56,.64,1), background .85s ease-in-out, box-shadow .85s ease-in-out;
     isolation:isolate;
     animation:float 5s ease-in-out infinite;
   }
@@ -114,15 +114,16 @@
     position:absolute;inset:16px;border-radius:50%;
     border:3px dashed rgba(255,255,255,.35);
   }
-  .wheel.spinning .wheel-ring{animation:spinring 1.1s linear infinite}
+  .wheel.spinning .wheel-ring{animation:spinring 2.6s linear infinite}
   .wheel-label{font-family:'Baloo 2',cursive;font-weight:800;font-size:30px;line-height:1.05;text-align:center;letter-spacing:-.5px;pointer-events:none;transition:transform .2s;color:#fff;
     -webkit-text-fill-color:#fff;text-shadow:0 2px 8px rgba(8,80,55,.35)}
   .wheel-label small{-webkit-text-fill-color:rgba(255,255,255,.85);color:rgba(255,255,255,.85)}
   .wheel-emoji{display:block;font-size:38px;margin-bottom:6px;-webkit-text-fill-color:initial;animation:emojibounce 2.2s ease-in-out infinite}
   @keyframes emojibounce{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-7px) rotate(4deg)}}
   .wheel-label small{display:block;font-size:13px;font-weight:600;color:var(--cream-dim);margin-top:8px;font-family:'Inter';letter-spacing:0}
-  .wheel.spinning .wheel-label{animation:pulse .5s ease-in-out infinite}
-  @keyframes pulse{50%{transform:scale(1.06)}}
+  .wheel-label .cari{display:block;font-family:'Baloo 2',cursive;font-weight:800;font-size:28px;line-height:1.1}
+  .wheel.spinning .wheel-label{animation:breathe 2.4s ease-in-out infinite}
+  @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
   .hint{color:var(--cream-faint);font-size:13px;text-align:center;max-width:240px;line-height:1.5}
 
   /* ---------- Result card ---------- */
@@ -134,6 +135,9 @@
   .result-top{padding:22px 20px 16px;background:linear-gradient(135deg,rgba(18,184,118,.14),rgba(255,159,28,.12))}
   .result-eyebrow{font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);margin-bottom:7px}
   .result-name{font-family:'Baloo 2',cursive;font-weight:800;font-size:25px;line-height:1.1;letter-spacing:-.3px}
+  .result-name-link{text-decoration:none;display:inline-block}
+  .result-name-link .result-name{transition:opacity .15s}
+  .result-name-link:active .result-name{opacity:.6}
   .result-cuisine{color:var(--cream-dim);font-size:13.5px;font-weight:500;margin-top:5px;text-transform:capitalize}
   .result-meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line)}
   .meta-cell{padding:15px 12px;text-align:center;border-right:1px solid var(--line)}
@@ -529,22 +533,14 @@ async function reverseGeo(p){
    ============================================================ */
 const wheel=$('#wheel'), wheelLabel=$('#wheelLabel'), stage=$('#spinStage');
 const FLASH=[
-  '#12b876', // green
-  '#2d8cff', // blue
-  '#ff5fb4', // pink
-  '#ffb02e', // amber
-  '#9b5cff', // purple
-  '#ff5d52', // red-coral
-  '#00c2cb', // teal-cyan
-  '#ff8a3d', // orange
-  '#7ed321', // lime
-  '#5d6dff', // indigo
-  '#ff4d8d', // magenta
-  '#1fd1a5', // mint
-  '#ffd23f', // yellow
-  '#c44dff', // violet
-  '#ff6b35', // tangerine
-  '#3ed598'  // emerald
+  '#1fb87a', // green
+  '#2bb5b0', // teal
+  '#3a9ad9', // soft blue
+  '#7d7fe0', // periwinkle
+  '#b56fd0', // soft violet
+  '#e87aa8', // rose
+  '#f0995e', // soft orange
+  '#e8b84b'  // warm amber
 ];
 let flashTimer=null, spinning=false;
 
@@ -561,7 +557,7 @@ async function doSpin(){
   spinning=true;
   buzz(12);
   const spinStart=Date.now();
-  const MIN_SPIN=550;   // guarantee a brief satisfying flash, but never add delay on top of slow networks
+  const MIN_SPIN=900;   // long enough to show a gentle colour drift, not a strobe
   startFlash();
 
   try{
@@ -606,26 +602,27 @@ async function doSpin(){
 
 function startFlash(){
   wheel.classList.add('spinning');
-  wheelLabel.innerHTML='Cari…<small>Finding makan</small>';
-  // shuffle a fresh order each spin so colours feel random and never a fixed loop
-  const order=shuffle(FLASH.slice());
-  let i=0;
-  applyFlash(order[0]);
+  // keep the food emoji; just add the "Cari…" status under it
+  wheelLabel.innerHTML='<span class="wheel-emoji">🍜</span><span class="cari">Cari…</span><small>Finding makan</small>';
+  // accessibility: if the user prefers reduced motion, hold one calm colour and don't cycle
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let i=Math.floor(Math.random()*FLASH.length);
+  applyFlash(FLASH[i]);
+  if(reduce) return;
+  // walk the palette in order (it's arranged around the colour wheel) for a smooth drift
   flashTimer=setInterval(()=>{
-    i++;
-    if(i>=order.length){ shuffle(order); i=0; }   // reshuffle when we exhaust the palette
-    applyFlash(order[i]);
-    buzz(6);
-  },140);
+    i=(i+1)%FLASH.length;
+    applyFlash(FLASH[i]);
+  },750);   // slow: the 0.85s CSS transition cross-fades between each
 }
 function shuffle(a){
   for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
   return a;
 }
 function applyFlash(color){
-  // solid bold fill with a subtle top highlight — distinct colour each tick, no blending
-  wheel.style.background=`radial-gradient(circle at 50% 30%, ${shade(color,18)}, ${color} 60%, ${shade(color,-12)})`;
-  wheel.style.boxShadow=`0 24px 60px -16px ${color}88, inset 0 3px 0 rgba(255,255,255,.28), inset 0 0 0 6px rgba(255,255,255,.16)`;
+  // soft fill — the long CSS transition turns each change into a gentle wash, not a strobe
+  wheel.style.background=`radial-gradient(circle at 50% 32%, ${shade(color,16)}, ${color} 64%, ${shade(color,-10)})`;
+  wheel.style.boxShadow=`0 24px 60px -16px ${color}77, inset 0 3px 0 rgba(255,255,255,.24), inset 0 0 0 6px rgba(255,255,255,.14)`;
 }
 // lighten(+)/darken(-) a hex colour by percent
 function shade(hex,pct){
@@ -772,17 +769,30 @@ function dayMatch(spec,day){
   return false;
 }
 
+/* Build a Google Maps URL that resolves to the actual named business
+   (with its listing/photos/reviews) rather than just dropping a raw pin.
+   Including the name lets Maps match the real place; coords disambiguate. */
+function gmapsPlace(name, lat, lon){
+  const q=encodeURIComponent(`${name}, ${lat},${lon}`);
+  return `https://www.google.com/maps/search/?api=1&query=${q}`;
+}
+function gmapsDir(name, lat, lon){
+  const dest=encodeURIComponent(`${name}, ${lat},${lon}`);
+  return `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
+}
+
 /* ---- render ---- */
 function renderResult(w, others){
   const openLbl = w.openState==='open'?'<span class="meta-val open">Open</span>'
                 : w.openState==='closed'?'<span class="meta-val closed">Closed</span>'
                 : '<span class="meta-val">—</span>';
-  const mapUrl=`https://www.google.com/maps/dir/?api=1&destination=${w.lat},${w.lon}`;
+  const mapUrl=gmapsDir(w.name, w.lat, w.lon);
+  const placeUrl=gmapsPlace(w.name, w.lat, w.lon);
   stage.innerHTML=`
     <div class="result">
       <div class="result-top">
         <div class="result-eyebrow">Tonight you makan at</div>
-        <div class="result-name">${esc(w.name)}</div>
+        <a class="result-name-link" href="${placeUrl}" target="_blank" rel="noopener"><div class="result-name">${esc(w.name)}</div></a>
         ${w.cuisine?`<div class="result-cuisine">${esc(w.cuisine)} · ${labelAmenity(w.amenity)}</div>`:`<div class="result-cuisine">${labelAmenity(w.amenity)}</div>`}
       </div>
       <div class="result-meta">
@@ -797,7 +807,7 @@ function renderResult(w, others){
     </div>
     ${others.length?`<div class="others">
       <div class="others-h">Or one of these</div>
-      ${others.map(o=>`<div class="mini" data-lat="${o.lat}" data-lon="${o.lon}">
+      ${others.map(o=>`<div class="mini" data-name="${esc(o.name)}" data-lat="${o.lat}" data-lon="${o.lon}">
         <div class="mini-info"><div class="mini-name">${esc(o.name)}</div>
         <div class="mini-sub">${o.cuisine?esc(o.cuisine)+' · ':''}${o.mins} min</div></div>
         <div class="mini-dist">${o.km.toFixed(1)} km</div>
@@ -807,8 +817,8 @@ function renderResult(w, others){
   $('#reSpin').onclick=()=>{ resetWheel(); setTimeout(doSpin,180); };
   $$('.mini').forEach(m=>{
     m.onclick=()=>{
-      const lat=m.dataset.lat, lon=m.dataset.lon;
-      window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`,'_blank');
+      const name=m.dataset.name, lat=m.dataset.lat, lon=m.dataset.lon;
+      window.open(gmapsDir(name, lat, lon),'_blank');
     };
   });
 }
