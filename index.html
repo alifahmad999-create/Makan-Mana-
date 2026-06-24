@@ -531,7 +531,9 @@ async function reverseGeo(p){
 /* ============================================================
    SPIN  →  Overpass query + OSRM distances
    ============================================================ */
-const wheel=$('#wheel'), wheelLabel=$('#wheelLabel'), stage=$('#spinStage');
+const stage=$('#spinStage');
+const wheelEl=()=>$('#wheel');
+const wheelLabelEl=()=>$('#wheelLabel');
 const FLASH=[
   '#1fb87a', // green
   '#2bb5b0', // teal
@@ -544,27 +546,32 @@ const FLASH=[
 ];
 let flashTimer=null, spinning=false;
 
-wheel.onclick=()=>{ if(!spinning) doSpin(); };
+bindWheel();
 
 async function doSpin(){
-  if(!userPos){
-    toast('Getting your location first…');
-    locate(false);
-    // wait briefly for a fix
-    await new Promise(r=>setTimeout(r,1800));
-    if(!userPos){ toast('Need location to find food 📍'); return; }
-  }
+  if(spinning) return;            // guard against double-taps mid-spin
   spinning=true;
   buzz(12);
+  startFlash();                  // instant visual feedback on every tap
   const spinStart=Date.now();
-  const MIN_SPIN=900;   // long enough to show a gentle colour drift, not a strobe
-  startFlash();
 
   try{
+    // need a location first — try to get one while the wheel is already spinning
+    if(!userPos){
+      locate(false);
+      // poll briefly for a fix (up to ~3s) instead of a blind fixed wait
+      for(let t=0;t<15 && !userPos;t++){ await new Promise(r=>setTimeout(r,200)); }
+      if(!userPos){
+        stopFlash(); spinning=false;
+        renderEmpty('Location needed','Allow location access so I can find makan spots near you, then tap again.');
+        return;
+      }
+    }
+
     const places = await fetchPlaces(userPos);
     if(!places.length){
       stopFlash(); spinning=false;
-      renderEmpty('No spots found','Try a bigger radius in Settings, or move the search filters.');
+      renderEmpty('No spots nearby','Nothing found in this area. Try a bigger radius in Settings.');
       return;
     }
     // compute road distances for the nearest N (cap to keep it light)
@@ -575,11 +582,28 @@ async function doSpin(){
 
     const withRoad = await addRoadDistances(userPos, near);
 
-    // filter by max drive time + open-now ('30+' notch = no time limit)
+    // Progressive filtering: start strict, relax until we have candidates.
+    // A randomiser should almost always return SOMETHING.
     const noTimeLimit = settings.maxTime>=30;
-    let pool = noTimeLimit ? withRoad.slice() : withRoad.filter(p=> p.mins<=settings.maxTime);
-    if(settings.openOnly) pool = pool.filter(p=> p.openState!=='closed');
-    if(!pool.length) pool = withRoad;  // fall back so the wheel always lands
+    let pool = withRoad.slice();
+
+    // 1) time filter (skip if '30+' notch)
+    if(!noTimeLimit){
+      const timed = pool.filter(p=> p.mins<=settings.maxTime);
+      if(timed.length) pool = timed;        // only apply if it leaves something
+    }
+    // 2) open-now filter — only if the toggle is on AND it leaves something.
+    //    (OSM hours data is patchy, so never let it zero out the pool.)
+    if(settings.openOnly){
+      const open = pool.filter(p=> p.openState==='open');   // strictly known-open
+      if(open.length) pool = open;
+      else {
+        const notClosed = pool.filter(p=> p.openState!=='closed');  // include 'unknown'
+        if(notClosed.length) pool = notClosed;
+      }
+    }
+    // 3) absolute fallback so the wheel always lands
+    if(!pool.length) pool = withRoad;
 
     pool.sort((a,b)=>a.mins-b.mins);
     lastResults = pool;
@@ -587,9 +611,10 @@ async function doSpin(){
     // pick a weighted-random winner (favor closer, but keep it fun)
     const winner = weightedPick(pool);
 
-    // only wait if the work finished faster than the minimum flash — no added delay otherwise
+    // distance-scaled spin: small radius lands fast, big radius spins a bit longer
+    const dynMin = 600 + Math.min(settings.radius, 15)*60;   // ~660ms @1km … ~1500ms @15km
     const elapsed=Date.now()-spinStart;
-    if(elapsed<MIN_SPIN) await new Promise(r=>setTimeout(r, MIN_SPIN-elapsed));
+    if(elapsed<dynMin) await new Promise(r=>setTimeout(r, dynMin-elapsed));
     stopFlash();
     spinning=false;
     renderResult(winner, pool.filter(p=>p!==winner).slice(0,4));
@@ -601,15 +626,18 @@ async function doSpin(){
 }
 
 function startFlash(){
+  const wheel=wheelEl(), wheelLabel=wheelLabelEl();
+  if(!wheel) return;
   wheel.classList.add('spinning');
   // keep the food emoji; just add the "Cari…" status under it
-  wheelLabel.innerHTML='<span class="wheel-emoji">🍜</span><span class="cari">Cari…</span><small>Finding makan</small>';
+  if(wheelLabel) wheelLabel.innerHTML='<span class="wheel-emoji">🍜</span><span class="cari">Cari…</span><small>Finding makan</small>';
   // accessibility: if the user prefers reduced motion, hold one calm colour and don't cycle
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let i=Math.floor(Math.random()*FLASH.length);
   applyFlash(FLASH[i]);
   if(reduce) return;
   // walk the palette in order (it's arranged around the colour wheel) for a smooth drift
+  clearInterval(flashTimer);
   flashTimer=setInterval(()=>{
     i=(i+1)%FLASH.length;
     applyFlash(FLASH[i]);
@@ -620,6 +648,8 @@ function shuffle(a){
   return a;
 }
 function applyFlash(color){
+  const wheel=wheelEl();
+  if(!wheel) return;
   // soft fill — the long CSS transition turns each change into a gentle wash, not a strobe
   wheel.style.background=`radial-gradient(circle at 50% 32%, ${shade(color,16)}, ${color} 64%, ${shade(color,-10)})`;
   wheel.style.boxShadow=`0 24px 60px -16px ${color}77, inset 0 3px 0 rgba(255,255,255,.24), inset 0 0 0 6px rgba(255,255,255,.14)`;
@@ -636,9 +666,13 @@ function shade(hex,pct){
 }
 function stopFlash(){
   clearInterval(flashTimer);
-  wheel.style.background='';
-  wheel.style.boxShadow='';
-  wheel.classList.remove('spinning');
+  flashTimer=null;
+  const wheel=wheelEl();
+  if(wheel){
+    wheel.style.background='';
+    wheel.style.boxShadow='';
+    wheel.classList.remove('spinning');
+  }
 }
 
 /* ---- Overpass: nearby food amenities ---- */
@@ -670,15 +704,21 @@ async function fetchPlaces(p){
     out center 60;`;
   const endpoints=[
     'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter'
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
   ];
   let data=null;
   for(const ep of endpoints){
     try{
-      const res=await fetch(ep,{method:'POST',body:'data='+encodeURIComponent(q)});
+      // abort a slow server after 9s and try the next one
+      const ctrl=new AbortController();
+      const to=setTimeout(()=>ctrl.abort(), 9000);
+      const res=await fetch(ep,{method:'POST',body:'data='+encodeURIComponent(q),signal:ctrl.signal});
+      clearTimeout(to);
       if(!res.ok) continue;
-      data=await res.json(); break;
-    }catch(e){ /* try next endpoint */ }
+      data=await res.json();
+      if(data && data.elements) break;
+    }catch(e){ /* timeout or network — try next endpoint */ }
   }
   if(!data) throw new Error('overpass');
   return (data.elements||[]).map(el=>{
@@ -824,10 +864,10 @@ function renderResult(w, others){
 }
 function renderEmpty(title,msg){
   stage.innerHTML=`<div class="state">
-    <div class="big">🤔</div><h3>${title}</h3><p>${msg}</p>
+    <div class="big">🤔</div><h3>${esc(title)}</h3><p>${esc(msg)}</p>
     <button class="btn btn-primary" id="retry" style="max-width:200px;margin:0 auto">Try again</button>
   </div>`;
-  $('#retry').onclick=resetWheel;
+  $('#retry').onclick=()=>{ resetWheel(); setTimeout(()=>doSpin(),120); };
 }
 const IDLE_EMOJI=['🍜','🍛','🍚','🍢','🥘','🍤','🧋','🍙','🌶️','🥟'];
 function resetWheel(){
