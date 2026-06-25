@@ -705,6 +705,7 @@ function stopFlash(){
 }
 
 /* ---- Overpass: nearby food amenities ---- */
+let placesCache={ key:null, data:null, ts:0 };
 async function fetchPlaces(p){
   // Determine search radius. In 'time' mode, convert the time budget into a
   // generous distance (assume ~1km/min city driving, capped) so we don't miss
@@ -739,46 +740,50 @@ async function fetchPlaces(p){
   }
 
   // Lower server-side timeout + modest result cap = fast failure or fast success.
-  const q=`[out:json][timeout:12];(${blocks});out center 45;`;
+  const q=`[out:json][timeout:25];(${blocks});out center 45;`;
+
+  // Cache: if we already pulled this same area+settings recently, reuse it.
+  // Rounds location to ~1km grid so small GPS drift still hits the cache.
+  const cacheKey=`${lat.toFixed(2)},${lon.toFixed(2)}|${q.length}|${blocks.length}`;
+  if(placesCache.data && placesCache.key===cacheKey && (Date.now()-placesCache.ts)<10*60*1000){
+    return placesCache.data;   // fresh enough — instant, no network
+  }
 
   const endpoints=[
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
-    'https://overpass.openstreetmap.ru/api/interpreter',
-    'https://overpass.private.coffee/api/interpreter'
+    'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+    'https://overpass.openstreetmap.ru/api/interpreter'
   ];
 
-  // Fire all endpoints at once (GET) and take whichever returns first with data.
-  // This avoids waiting out a slow server before trying the next — the main
-  // cause of the long hang. Each call self-aborts after 13s.
-  const attempt=(ep)=>{
-    const ctrl=new AbortController();
-    const to=setTimeout(()=>ctrl.abort('timeout'), 13000);
-    return fetch(ep+'?data='+encodeURIComponent(q),{signal:ctrl.signal})
-      .then(res=>{ clearTimeout(to); if(!res.ok) throw new Error('HTTP '+res.status+' @'+host(ep)); return res.json(); })
-      .then(j=>{ if(j && Array.isArray(j.elements)) return j; throw new Error('no data @'+host(ep)); });
-  };
-
+  // Try each endpoint in turn with POST and a generous timeout. Overpass cold
+  // queries can take 15-20s, so we give each a real chance rather than racing
+  // them and aborting together. The first one that returns data wins.
   let data=null, lastErr='';
-  try{
-    data = await promiseAny(endpoints.map(attempt));
-  }catch(e){ lastErr=(e&&e.message)||'all endpoints failed'; }
-
-  // POST fallback on the primary if every GET failed (some networks block GET caching)
-  if(!data){
+  for(const ep of endpoints){
     try{
       const ctrl=new AbortController();
-      const to=setTimeout(()=>ctrl.abort('timeout'), 13000);
-      const res=await fetch(endpoints[0],{method:'POST',body:'data='+encodeURIComponent(q),signal:ctrl.signal});
+      const to=setTimeout(()=>ctrl.abort('timeout'), 25000);   // generous — Overpass is slow when cold
+      const res=await fetch(ep,{
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'data='+encodeURIComponent(q),
+        signal:ctrl.signal
+      });
       clearTimeout(to);
-      if(res.ok){ const j=await res.json(); if(j&&Array.isArray(j.elements)) data=j; else lastErr='no data (POST)'; }
-      else lastErr='HTTP '+res.status+' (POST)';
-    }catch(e){ lastErr=(e&&e.message)||lastErr||'POST failed'; }
+      if(!res.ok){ lastErr='HTTP '+res.status+' @'+host(ep); continue; }
+      const j=await res.json();
+      if(j && Array.isArray(j.elements)){ data=j; break; }
+      lastErr='no data @'+host(ep);
+    }catch(e){
+      lastErr=((e&&e.message)||e||'error')+' @'+host(ep);
+      // on abort/network error, move straight to the next endpoint
+    }
   }
 
   if(!data){ console.warn('Overpass failed:', lastErr); throw new Error(lastErr||'overpass'); }
 
-  return (data.elements||[]).map(el=>{
+  const parsed=(data.elements||[]).map(el=>{
     const t=el.tags||{};
     const elat=el.lat ?? (el.center&&el.center.lat);
     const elon=el.lon ?? (el.center&&el.center.lon);
@@ -793,6 +798,8 @@ async function fetchPlaces(p){
       openState:openNow(t.opening_hours)
     };
   }).filter(Boolean);
+  placesCache={ key:cacheKey, data:parsed, ts:Date.now() };
+  return parsed;
 }
 function host(u){ try{ return new URL(u).hostname.replace('overpass.','').replace('.api',''); }catch(e){ return u; } }
 // Promise.any fallback (older Safari) — resolves on first fulfilled, rejects if all reject
