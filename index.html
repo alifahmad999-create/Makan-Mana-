@@ -140,6 +140,7 @@
   .result-name-link .result-name{transition:opacity .15s}
   .result-name-link:active .result-name{opacity:.6}
   .result-cuisine{color:var(--cream-dim);font-size:13.5px;font-weight:500;margin-top:5px;text-transform:capitalize}
+  .result-venue{color:var(--pandan);font-size:13px;font-weight:700;margin-top:3px}
   .result-meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line)}
   .meta-cell{padding:15px 12px;text-align:center;border-right:1px solid var(--line)}
   .meta-cell:last-child{border-right:none}
@@ -485,22 +486,17 @@ window.OFFLINE_PLACES=[
   {name:"Lou Yau Kee Bak Kut Teh",lat:3.0760,lon:101.5860,cuisine:"chinese",amenity:"restaurant"},
   {name:"Restoran Yusoof dan Zakhir",lat:3.1456,lon:101.6958,cuisine:"mamak",amenity:"restaurant"},
   {name:"Sunway Pyramid Food Court",lat:3.0726,lon:101.6068,cuisine:"food court",amenity:"food_court"},
-  {name:"Sunway Pyramid",lat:3.0726,lon:101.6068,cuisine:"",amenity:"mall"},
   {name:"SS15 Courtyard",lat:3.0772,lon:101.5870,cuisine:"cafe",amenity:"restaurant"},
   {name:"Restoran Win Heng Seng",lat:3.1430,lon:101.7180,cuisine:"chinese",amenity:"restaurant"},
   {name:"Jalan Alor Food Street",lat:3.1456,lon:101.7080,cuisine:"street food",amenity:"food_court"},
   {name:"Madam Kwan's KLCC",lat:3.1578,lon:101.7120,cuisine:"malaysian",amenity:"restaurant"},
-  {name:"Suria KLCC",lat:3.1578,lon:101.7120,cuisine:"",amenity:"mall"},
   {name:"Restoran Rebung Chef Ismail",lat:3.1180,lon:101.6700,cuisine:"malay buffet",amenity:"restaurant"},
   {name:"Nasi Lemak Tanglin",lat:3.1490,lon:101.6840,cuisine:"nasi lemak",amenity:"restaurant"},
   {name:"Restoran Ali Maju (SS2)",lat:3.1180,lon:101.6230,cuisine:"mamak",amenity:"restaurant"},
-  {name:"Mid Valley Megamall",lat:3.1175,lon:101.6770,cuisine:"",amenity:"mall"},
   {name:"Devi's Corner Bangsar",lat:3.1320,lon:101.6710,cuisine:"mamak",amenity:"restaurant"},
   {name:"VCR Cafe",lat:3.1390,lon:101.7000,cuisine:"cafe",amenity:"restaurant"},
   {name:"Restoran Sek Yuen",lat:3.1640,lon:101.7050,cuisine:"chinese",amenity:"restaurant"},
-  {name:"1 Utama Shopping Centre",lat:3.1500,lon:101.6160,cuisine:"",amenity:"mall"},
   {name:"Murni Discovery SS2",lat:3.1170,lon:101.6240,cuisine:"mamak",amenity:"restaurant"},
-  {name:"The Gardens Mall",lat:3.1180,lon:101.6780,cuisine:"",amenity:"mall"},
   {name:"Betel Leaf Indian Restaurant",lat:3.1430,lon:101.6970,cuisine:"indian",amenity:"restaurant"},
   {name:"Lot 10 Hutong",lat:3.1470,lon:101.7110,cuisine:"food court",amenity:"food_court"},
   {name:"Restoran Beh Brothers Kepong",lat:3.2100,lon:101.6360,cuisine:"chinese",amenity:"restaurant"}
@@ -775,25 +771,27 @@ async function fetchPlaces(p){
     return placesCache.data;
   }
 
-  let parsed=null, errs=[];
+  let parsed=null, errs=[], source='';
 
   // 1) Geoapify — fast, reliable. Uses built-in key, or the user's own if set.
   if(activeKey()){
-    try{ parsed = await fetchGeoapify(p, r); }
+    try{ parsed = await fetchGeoapify(p, r); if(parsed&&parsed.length) source='geoapify'; }
     catch(e){ errs.push('geoapify: '+((e&&e.message)||e)); }
   }
 
   // 2) Overpass — free, no key, but often overloaded
   if(!parsed || !parsed.length){
-    try{ const op = await fetchOverpass(p, r); if(op && op.length) parsed=op; }
+    try{ const op = await fetchOverpass(p, r); if(op && op.length){ parsed=op; source='overpass'; } }
     catch(e){ errs.push((e&&e.message)||String(e)); }
   }
 
   // 3) Offline bundled data (always works in covered areas)
   if(!parsed || !parsed.length){
     const off = offlineNearby(lat, lon, r);
-    if(off.length){ parsed=off; }
+    if(off.length){ parsed=off; source='offline'; }
   }
+
+  window.__lastSource=source;   // for diagnostics
 
   if(!parsed || !parsed.length){
     console.warn('All sources failed:', errs.join(' | '));
@@ -836,7 +834,13 @@ async function fetchGeoapify(p, r){
     let cuisine='';
     const cz=cats.find(c=>c.startsWith('catering.restaurant.'));
     if(cz) cuisine=cz.split('.').pop().replace(/_/g,' ');
-    return { name:pr.name, lat, lon, cuisine, amenity, hours:pr.opening_hours||'', openState:openNow(pr.opening_hours) };
+    // venue: the mall/building this eatery sits in, if Geoapify provides it.
+    // Geoapify sometimes returns the containing complex in these fields.
+    let venue='';
+    const cand=[pr.building, pr.complex, pr.suburb].filter(Boolean);
+    const mallish=cand.find(v=>/mall|megamall|pyramid|plaza|centre|center|complex|paradigm|gateway|avenue/i.test(v) && v!==pr.name);
+    if(mallish) venue=mallish;
+    return { name:pr.name, lat, lon, cuisine, amenity, venue, hours:pr.opening_hours||'', openState:openNow(pr.opening_hours) };
   }).filter(Boolean);
 }
 
@@ -939,8 +943,14 @@ function haversine(a,b){
   return 2*R*Math.asin(Math.sqrt(s));
 }
 function weightedPick(arr){
-  // weight inversely to drive time so near places win more often, but not always
-  const w=arr.map(p=>1/Math.max(2,p.mins));
+  // weight inversely to drive time so near places win more often, but not always.
+  // Bare malls are heavily down-weighted — "go eat at a mall" is too vague a pick;
+  // we'd rather suggest an actual eatery. They can still appear in the runner-up list.
+  const w=arr.map(p=>{
+    let base=1/Math.max(2,p.mins);
+    if(p.amenity==='mall') base*=0.08;   // strongly demote bare malls
+    return base;
+  });
   const sum=w.reduce((a,b)=>a+b,0);
   let r=Math.random()*sum;
   for(let i=0;i<arr.length;i++){ r-=w[i]; if(r<=0) return arr[i]; }
@@ -1006,6 +1016,7 @@ function renderResult(w, others){
       <div class="result-top">
         <div class="result-eyebrow">Tonight you makan at</div>
         <a class="result-name-link" href="${placeUrl}" target="_blank" rel="noopener"><div class="result-name">${esc(w.name)}</div></a>
+        ${w.venue?`<div class="result-venue">at ${esc(w.venue)}</div>`:''}
         ${w.cuisine?`<div class="result-cuisine">${esc(w.cuisine)} · ${labelAmenity(w.amenity)}</div>`:`<div class="result-cuisine">${labelAmenity(w.amenity)}</div>`}
       </div>
       <div class="result-meta">
