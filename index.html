@@ -118,7 +118,8 @@
   .wheel-label{font-family:'Baloo 2',cursive;font-weight:800;font-size:30px;line-height:1.05;text-align:center;letter-spacing:-.5px;pointer-events:none;transition:transform .2s;color:#fff;
     -webkit-text-fill-color:#fff;text-shadow:0 2px 8px rgba(8,80,55,.35)}
   .wheel-label small{-webkit-text-fill-color:rgba(255,255,255,.85);color:rgba(255,255,255,.85)}
-  .wheel-emoji{display:block;font-size:38px;margin-bottom:6px;-webkit-text-fill-color:initial;animation:emojibounce 2.2s ease-in-out infinite}
+  .wheel-emoji{display:block;font-size:38px;margin-bottom:6px;-webkit-text-fill-color:initial;animation:emojibounce 2.2s ease-in-out infinite;transition:opacity .22s ease, transform .22s ease}
+  .wheel-emoji.swap{opacity:0;transform:translateY(-8px) scale(.8);animation-play-state:paused}
   @keyframes emojibounce{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-7px) rotate(4deg)}}
   .wheel-label small{display:block;font-size:13px;font-weight:600;color:var(--cream-dim);margin-top:8px;font-family:'Inter';letter-spacing:0}
   .wheel-label .cari{display:block;font-family:'Baloo 2',cursive;font-weight:800;font-size:28px;line-height:1.1}
@@ -392,14 +393,19 @@
       <p class="sec-sub">Tune how the wheel picks. Saved on this device.</p>
 
       <div class="set-group">
-        <div class="set-slider">
+        <div style="padding:14px 0 2px"><div class="lbl">Find spots by</div><div class="desc">Pick what the wheel filters on</div></div>
+        <div class="seg" id="filterModeSeg" style="margin:12px 0 4px">
+          <button class="on" data-fmode="distance">📍 Distance</button>
+          <button data-fmode="time">⏱️ Drive time</button>
+        </div>
+        <div class="set-slider" id="radiusRow">
           <div class="set-row" style="border:none;padding:0">
             <div><div class="lbl">Search radius</div><div class="desc">How far to look for spots</div></div>
             <div class="slider-val"><span id="radVal">3</span> km</div>
           </div>
           <input type="range" id="radius" min="1" max="15" step="1" value="3">
         </div>
-        <div class="set-slider" style="border:none">
+        <div class="set-slider" id="timeRow" style="border:none;display:none">
           <div class="set-row" style="border:none;padding:0">
             <div><div class="lbl">Max drive time</div><div class="desc">Skip anything further than this</div></div>
             <div class="slider-val"><span id="timeVal">15</span> min</div>
@@ -461,7 +467,7 @@ const $$ = s => [...document.querySelectorAll(s)];
 const fmt = n => 'RM ' + (Math.round(n*100)/100).toFixed(2);
 
 /* ---------- persisted settings ---------- */
-const DEFAULTS = { radius:3, maxTime:15, openOnly:false, incMall:true, incFast:true, cuisines:[], pro:false };
+const DEFAULTS = { radius:3, maxTime:15, openOnly:false, incMall:true, incFast:true, cuisines:[], pro:false, filterMode:'distance' };
 let settings = load('mm_settings', DEFAULTS);
 function load(k,f){ try{ return {...f, ...JSON.parse(localStorage.getItem(k)||'{}')}; }catch(e){ return {...f}; } }
 function saveSettings(){ try{ localStorage.setItem('mm_settings', JSON.stringify(settings)); }catch(e){} }
@@ -544,7 +550,7 @@ const FLASH=[
   '#f0995e', // soft orange
   '#e8b84b'  // warm amber
 ];
-let flashTimer=null, spinning=false;
+let flashTimer=null, emojiTimer=null, spinning=false;
 
 bindWheel();
 
@@ -584,11 +590,12 @@ async function doSpin(){
 
     // Progressive filtering: start strict, relax until we have candidates.
     // A randomiser should almost always return SOMETHING.
-    const noTimeLimit = settings.maxTime>=30;
+    const mode = settings.filterMode||'distance';
     let pool = withRoad.slice();
 
-    // 1) time filter (skip if '30+' notch)
-    if(!noTimeLimit){
+    // 1) time filter — only in 'time' mode (and skip at the '30+' notch).
+    //    In 'distance' mode the radius already bounds things, so no time filter.
+    if(mode==='time' && settings.maxTime<30){
       const timed = pool.filter(p=> p.mins<=settings.maxTime);
       if(timed.length) pool = timed;        // only apply if it leaves something
     }
@@ -611,8 +618,9 @@ async function doSpin(){
     // pick a weighted-random winner (favor closer, but keep it fun)
     const winner = weightedPick(pool);
 
-    // distance-scaled spin: small radius lands fast, big radius spins a bit longer
-    const dynMin = 600 + Math.min(settings.radius, 15)*60;   // ~660ms @1km … ~1500ms @15km
+    // spin time scales with the active setting (small=fast, large=longer)
+    const scaleN = mode==='time' ? Math.min(settings.maxTime,30)/2 : Math.min(settings.radius,15);
+    const dynMin = 600 + scaleN*55;
     const elapsed=Date.now()-spinStart;
     if(elapsed<dynMin) await new Promise(r=>setTimeout(r, dynMin-elapsed));
     stopFlash();
@@ -621,7 +629,11 @@ async function doSpin(){
     buzz([20,40,30]);
   }catch(err){
     stopFlash(); spinning=false;
-    renderEmpty('Hmm, no luck', 'The free map service might be busy. Give it another tap in a moment.');
+    const reason=(err&&err.message)||'';
+    console.warn('Spin failed:', reason);
+    renderEmpty('Hmm, no luck',
+      'The free map service is busy or unreachable. Tap to try again — it usually works on the next go.',
+      reason);
   }
 }
 
@@ -629,13 +641,27 @@ function startFlash(){
   const wheel=wheelEl(), wheelLabel=wheelLabelEl();
   if(!wheel) return;
   wheel.classList.add('spinning');
-  // keep the food emoji; just add the "Cari…" status under it
-  if(wheelLabel) wheelLabel.innerHTML='<span class="wheel-emoji">🍜</span><span class="cari">Cari…</span><small>Finding makan</small>';
+  // keep a food emoji visible; it will cycle with a fade while we search
+  const first=SPIN_EMOJI[Math.floor(Math.random()*SPIN_EMOJI.length)];
+  if(wheelLabel) wheelLabel.innerHTML=`<span class="wheel-emoji" id="spinEmoji">${first}</span><span class="cari">Cari…</span><small>Finding makan</small>`;
+  // cycle the emoji with a gentle fade
+  clearInterval(emojiTimer);
+  let ei=SPIN_EMOJI.indexOf(first);
+  emojiTimer=setInterval(()=>{
+    const em=$('#spinEmoji');
+    if(!em){ clearInterval(emojiTimer); return; }
+    em.classList.add('swap');            // fade out
+    setTimeout(()=>{
+      ei=(ei+1)%SPIN_EMOJI.length;
+      em.textContent=SPIN_EMOJI[ei];
+      em.classList.remove('swap');       // fade back in with new emoji
+    },220);
+  },900);
   // accessibility: if the user prefers reduced motion, hold one calm colour and don't cycle
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let i=Math.floor(Math.random()*FLASH.length);
   applyFlash(FLASH[i]);
-  if(reduce) return;
+  if(reduce){ clearInterval(emojiTimer); return; }
   // walk the palette in order (it's arranged around the colour wheel) for a smooth drift
   clearInterval(flashTimer);
   flashTimer=setInterval(()=>{
@@ -643,6 +669,7 @@ function startFlash(){
     applyFlash(FLASH[i]);
   },750);   // slow: the 0.85s CSS transition cross-fades between each
 }
+const SPIN_EMOJI=['🍜','🍛','🍚','🍢','🥘','🍤','🧋','🍙','🌶️','🥟','🍲','🍱','🥢','🍳'];
 function shuffle(a){
   for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
   return a;
@@ -667,6 +694,8 @@ function shade(hex,pct){
 function stopFlash(){
   clearInterval(flashTimer);
   flashTimer=null;
+  clearInterval(emojiTimer);
+  emojiTimer=null;
   const wheel=wheelEl();
   if(wheel){
     wheel.style.background='';
@@ -677,59 +706,87 @@ function stopFlash(){
 
 /* ---- Overpass: nearby food amenities ---- */
 async function fetchPlaces(p){
-  // at the max slider notch, treat radius as "15km+" → widen the actual search
-  const km = (settings.radius>=15) ? 25 : (settings.radius||3);
-  const r = km*1000;
+  // Determine search radius. In 'time' mode, convert the time budget into a
+  // generous distance (assume ~1km/min city driving, capped) so we don't miss
+  // reachable spots. In 'distance' mode, use the radius slider directly.
+  let km;
+  if((settings.filterMode||'distance')==='time'){
+    km = settings.maxTime>=30 ? 30 : Math.min(30, Math.max(3, settings.maxTime));
+  } else {
+    km = (settings.radius>=15) ? 25 : (settings.radius||3);
+  }
+  const r = Math.round(km*1000);
+  const lat=p.lat, lon=p.lon;
+
+  // Build the amenity list. Use EXACT-match statements (indexed, fast) rather
+  // than an anchored regex (~"^(...)$") which forces a slow full scan and is the
+  // main reason these queries time out on busy public servers.
   const amen=['restaurant'];
-  if(settings.incFast) amen.push('fast_food','food_court');
-  const amenRe = amen.join('|');
-  let cuisineFilter='';
+  if(settings.incFast){ amen.push('fast_food'); amen.push('food_court'); }
+
+  const around=`(around:${r},${lat},${lon})`;
+  let blocks='';
+  for(const a of amen){
+    blocks += `nwr["amenity"="${a}"]["name"]${around};`;
+  }
   if(settings.pro && settings.cuisines && settings.cuisines.length){
-    const cz = settings.cuisines.join('|');
-    cuisineFilter = `["cuisine"~"${cz}",i]`;
+    // optional cuisine narrowing (Pro) — regex only on the cuisine tag, small set
+    const cz=settings.cuisines.join('|');
+    blocks += `nwr["amenity"="restaurant"]["cuisine"~"${cz}",i]${around};`;
   }
-  // base food amenities
-  let blocks = `
-      node["amenity"~"^(${amenRe})$"]["name"]${cuisineFilter}(around:${r},${p.lat},${p.lon});
-      way["amenity"~"^(${amenRe})$"]["name"]${cuisineFilter}(around:${r},${p.lat},${p.lon});`;
-  // shopping malls (their eateries / food courts) when enabled
-  if(settings.incMall && !cuisineFilter){
-    blocks += `
-      node["shop"="mall"]["name"](around:${r},${p.lat},${p.lon});
-      way["shop"="mall"]["name"](around:${r},${p.lat},${p.lon});`;
+  if(settings.incMall){
+    blocks += `nwr["shop"="mall"]["name"]${around};`;
   }
-  const q=`[out:json][timeout:25];
-    (${blocks}
-    );
-    out center 60;`;
+
+  // Lower server-side timeout + modest result cap = fast failure or fast success.
+  const q=`[out:json][timeout:12];(${blocks});out center 45;`;
+
   const endpoints=[
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
-    'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+    'https://overpass.openstreetmap.ru/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter'
   ];
-  let data=null;
-  for(const ep of endpoints){
+
+  // Fire all endpoints at once (GET) and take whichever returns first with data.
+  // This avoids waiting out a slow server before trying the next — the main
+  // cause of the long hang. Each call self-aborts after 13s.
+  const attempt=(ep)=>{
+    const ctrl=new AbortController();
+    const to=setTimeout(()=>ctrl.abort('timeout'), 13000);
+    return fetch(ep+'?data='+encodeURIComponent(q),{signal:ctrl.signal})
+      .then(res=>{ clearTimeout(to); if(!res.ok) throw new Error('HTTP '+res.status+' @'+host(ep)); return res.json(); })
+      .then(j=>{ if(j && Array.isArray(j.elements)) return j; throw new Error('no data @'+host(ep)); });
+  };
+
+  let data=null, lastErr='';
+  try{
+    data = await promiseAny(endpoints.map(attempt));
+  }catch(e){ lastErr=(e&&e.message)||'all endpoints failed'; }
+
+  // POST fallback on the primary if every GET failed (some networks block GET caching)
+  if(!data){
     try{
-      // abort a slow server after 9s and try the next one
       const ctrl=new AbortController();
-      const to=setTimeout(()=>ctrl.abort(), 9000);
-      const res=await fetch(ep,{method:'POST',body:'data='+encodeURIComponent(q),signal:ctrl.signal});
+      const to=setTimeout(()=>ctrl.abort('timeout'), 13000);
+      const res=await fetch(endpoints[0],{method:'POST',body:'data='+encodeURIComponent(q),signal:ctrl.signal});
       clearTimeout(to);
-      if(!res.ok) continue;
-      data=await res.json();
-      if(data && data.elements) break;
-    }catch(e){ /* timeout or network — try next endpoint */ }
+      if(res.ok){ const j=await res.json(); if(j&&Array.isArray(j.elements)) data=j; else lastErr='no data (POST)'; }
+      else lastErr='HTTP '+res.status+' (POST)';
+    }catch(e){ lastErr=(e&&e.message)||lastErr||'POST failed'; }
   }
-  if(!data) throw new Error('overpass');
+
+  if(!data){ console.warn('Overpass failed:', lastErr); throw new Error(lastErr||'overpass'); }
+
   return (data.elements||[]).map(el=>{
     const t=el.tags||{};
-    const lat=el.lat ?? (el.center&&el.center.lat);
-    const lon=el.lon ?? (el.center&&el.center.lon);
-    if(lat==null||lon==null) return null;
+    const elat=el.lat ?? (el.center&&el.center.lat);
+    const elon=el.lon ?? (el.center&&el.center.lon);
+    if(elat==null||elon==null) return null;
     const amenity = t.amenity || (t.shop==='mall' ? 'mall' : '');
     return {
       name:t.name,
-      lat, lon,
+      lat:elat, lon:elon,
       cuisine:(t.cuisine||'').replace(/[_;]/g,' ').split(',')[0]||'',
       amenity,
       hours:t.opening_hours||'',
@@ -737,14 +794,33 @@ async function fetchPlaces(p){
     };
   }).filter(Boolean);
 }
+function host(u){ try{ return new URL(u).hostname.replace('overpass.','').replace('.api',''); }catch(e){ return u; } }
+// Promise.any fallback (older Safari) — resolves on first fulfilled, rejects if all reject
+function promiseAny(promises){
+  if(Promise.any) return Promise.any(promises);
+  return new Promise((resolve,reject)=>{
+    let pending=promises.length;
+    if(!pending){ reject(new Error('no endpoints')); return; }
+    let lastErr;
+    promises.forEach(pr=>Promise.resolve(pr).then(resolve,e=>{
+      lastErr=e; if(--pending===0) reject(lastErr);
+    }));
+  });
+}
 
 /* ---- OSRM: real driving distance/time for a small batch ---- */
 async function addRoadDistances(origin, list){
-  // OSRM "table" service: 1 source → many destinations, single request
-  const coords=[`${origin.lon},${origin.lat}`, ...list.map(p=>`${p.lon},${p.lat}`)].join(';');
-  const url=`https://router.project-osrm.org/table/v1/driving/${coords}?sources=0&annotations=distance,duration`;
+  // OSRM "table" service: 1 source → many destinations, single request.
+  // This is a "nice to have" — if it's slow/down we fall back to straight-line
+  // estimates so a spin never stalls on routing.
+  const crowFallback=()=>list.map(p=>({...p, mins:Math.max(1,Math.round(p.crow/600)), km:p.crow/1000}));
   try{
-    const r=await fetch(url);
+    const coords=[`${origin.lon},${origin.lat}`, ...list.map(p=>`${p.lon},${p.lat}`)].join(';');
+    const url=`https://router.project-osrm.org/table/v1/driving/${coords}?sources=0&annotations=distance,duration`;
+    const ctrl=new AbortController();
+    const to=setTimeout(()=>ctrl.abort('timeout'), 6000);
+    const r=await fetch(url,{signal:ctrl.signal});
+    clearTimeout(to);
     if(r.ok){
       const d=await r.json();
       const dur=d.durations?.[0]||[], dist=d.distances?.[0]||[];
@@ -754,8 +830,8 @@ async function addRoadDistances(origin, list){
         km:   dist[i+1]!=null ? dist[i+1]/1000 : p.crow/1000
       }));
     }
-  }catch(e){ /* fall back to crow-flies estimate */ }
-  return list.map(p=>({...p, mins:Math.max(1,Math.round(p.crow/600)), km:p.crow/1000}));
+  }catch(e){ /* timeout or network — fall through to crow-flies */ }
+  return crowFallback();
 }
 
 /* ---- helpers ---- */
@@ -862,10 +938,11 @@ function renderResult(w, others){
     };
   });
 }
-function renderEmpty(title,msg){
+function renderEmpty(title,msg,debug){
   stage.innerHTML=`<div class="state">
     <div class="big">🤔</div><h3>${esc(title)}</h3><p>${esc(msg)}</p>
     <button class="btn btn-primary" id="retry" style="max-width:200px;margin:0 auto">Try again</button>
+    ${debug?`<p style="margin-top:14px;font-size:10.5px;color:var(--cream-faint);opacity:.7;word-break:break-word">${esc(debug)}</p>`:''}
   </div>`;
   $('#retry').onclick=()=>{ resetWheel(); setTimeout(()=>doSpin(),120); };
 }
@@ -1112,6 +1189,16 @@ function bindSettings(){
   $('#incMall').onchange=e=>{ settings.incMall=e.target.checked; saveSettings(); };
   $('#incFast').onchange=e=>{ settings.incFast=e.target.checked; saveSettings(); };
 
+  // filter mode: distance vs time
+  applyFilterMode();
+  $$('#filterModeSeg button').forEach(b=>{
+    b.onclick=()=>{
+      settings.filterMode=b.dataset.fmode;
+      saveSettings();
+      applyFilterMode();
+    };
+  });
+
   // premium lock for cravings
   applyProState();
   $('#unlockBtn').onclick=()=>{
@@ -1123,6 +1210,13 @@ function bindSettings(){
 const RAD_MAX=15, TIME_MAX=30;
 function radLabel(v){ return v>=RAD_MAX ? RAD_MAX+'+' : v; }
 function timeLabel(v){ return v>=TIME_MAX ? TIME_MAX+'+' : v; }
+function applyFilterMode(){
+  const mode=settings.filterMode||'distance';
+  $$('#filterModeSeg button').forEach(b=> b.classList.toggle('on', b.dataset.fmode===mode));
+  const distRow=$('#radiusRow'), timeRow=$('#timeRow');
+  if(distRow) distRow.style.display = mode==='distance' ? '' : 'none';
+  if(timeRow) timeRow.style.display = mode==='time' ? '' : 'none';
+}
 function applyProState(){
   const lock=$('#cravingLock');
   if(settings.pro){ lock.style.display='none'; }
