@@ -518,6 +518,7 @@ function saveSettings(){ try{ localStorage.setItem('mm_settings', JSON.stringify
 
 let userPos = null;          // {lat,lon}
 let lastResults = [];        // sorted candidates
+let recentWinners = [];      // last few picks, to avoid repeats
 
 /* ---------- toast ---------- */
 let toastT;
@@ -632,15 +633,14 @@ async function doSpin(){
       .sort((a,b)=>a.crow-b.crow);
 
     let near;
-    if(all.length<=16){
+    if(all.length<=22){
       near=all;
     } else {
       // even sampling across the sorted-by-distance list for a good spread
-      const N=16, step=all.length/N;
+      const N=22, step=all.length/N;
       const picked=[];
       for(let i=0;i<N;i++){ picked.push(all[Math.floor(i*step)]); }
-      // always include a couple of the very nearest too
-      near=[all[0], all[1], ...picked].filter((v,i,a)=>a.indexOf(v)===i);
+      near=[all[0], all[1], all[2], ...picked].filter((v,i,a)=>a.indexOf(v)===i);
     }
 
     const withRoad = await addRoadDistances(userPos, near);
@@ -670,9 +670,20 @@ async function doSpin(){
     // sort for the runner-up list, but keep the full spread for picking
     pool.sort((a,b)=>a.mins-b.mins);
     lastResults = pool;
+    window.__poolSize = pool.length;
+    window.__rawCount = places.length;
 
-    // pick a weighted-random winner — flatter weighting so far places have a real shot
-    const winner = weightedPick(pool);
+    // pick a weighted-random winner — flatter weighting so far places have a real shot.
+    // Avoid repeating the last couple of winners when the pool is big enough.
+    let winner = weightedPick(pool);
+    if(pool.length>3 && recentWinners.length){
+      let tries=0;
+      while(tries<6 && recentWinners.includes(winner.name)){
+        winner = weightedPick(pool); tries++;
+      }
+    }
+    recentWinners.push(winner.name);
+    if(recentWinners.length>3) recentWinners.shift();
 
     // spin time scales with the active setting (small=fast, large=longer)
     const scaleN = mode==='time' ? Math.min(settings.maxTime,30)/2 : Math.min(settings.radius,15);
@@ -779,7 +790,7 @@ async function fetchPlaces(p){
 
   // cache by ~1km grid + radius + key settings
   const cacheKey=`${lat.toFixed(2)},${lon.toFixed(2)}|${r}|${settings.incFast?'f':''}${settings.incMall?'m':''}`;
-  if(placesCache.data && placesCache.key===cacheKey && (Date.now()-placesCache.ts)<10*60*1000){
+  if(placesCache.data && placesCache.key===cacheKey && (Date.now()-placesCache.ts)<3*60*1000){
     return placesCache.data;
   }
 
