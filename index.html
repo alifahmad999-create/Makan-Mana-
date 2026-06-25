@@ -264,6 +264,9 @@
   .cz{padding:9px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--field);color:var(--cream-dim);cursor:pointer;transition:.15s}
   .cz.on{background:var(--chili);color:#fff;border-color:var(--chili)}
   .premium-lock{position:relative;overflow:hidden}
+  .key-status{font-size:10px;font-weight:800;letter-spacing:.5px;padding:3px 8px;border-radius:7px;margin-left:6px;background:rgba(255,93,82,.14);color:var(--chili)}
+  .key-status.ok{background:rgba(18,184,118,.16);color:var(--pandan)}
+  .key-help{display:inline-block;font-size:12px;font-weight:700;color:var(--pandan);text-decoration:none;padding:4px 0 12px}
   .pro-badge{font-size:10px;font-weight:800;letter-spacing:.5px;color:var(--amber);background:rgba(255,182,39,.14);padding:4px 9px;border-radius:8px}
   .lock-overlay{position:absolute;inset:0;background:linear-gradient(180deg,rgba(247,251,249,.55),rgba(247,251,249,.94));backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;text-align:center;padding:20px}
   .lock-inner{max-width:240px;display:flex;flex-direction:column;align-items:center}
@@ -429,6 +432,17 @@
         </div>
       </div>
 
+      <div class="set-group">
+        <div style="padding:14px 0 2px">
+          <div class="lbl">Map data key <span id="keyStatus" class="key-status">built-in</span></div>
+          <div class="desc">Search works out of the box. Optionally paste your own free Geoapify key to use your own quota.</div>
+        </div>
+        <div class="field" style="margin:12px 0 8px">
+          <input class="inp" id="geoapifyKey" placeholder="Your own Geoapify key (optional)" autocomplete="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <a href="https://www.geoapify.com/get-started-with-maps-api/" target="_blank" rel="noopener" class="key-help">Get your own free key →</a>
+      </div>
+
       <div class="set-group premium-lock">
         <div style="padding:15px 0 0;display:flex;align-items:center;justify-content:space-between">
           <div class="lbl">Craving anything? <span style="font-size:12px;color:var(--cream-faint);font-weight:500">(filter by type)</span></div>
@@ -457,6 +471,40 @@
 
 <script>
 "use strict";
+/* Built-in Geoapify key (domain-locked in the Geoapify dashboard to this site).
+   Users get zero-setup search out of the box. A user can still paste their own
+   key in Settings to override this. */
+const BUILTIN_GEOAPIFY_KEY="fa8d667b941a4847b5cde4335be6a639";
+/* Offline fallback dataset — well-known Klang Valley / KL makan spots.
+   Used only when both Geoapify and Overpass are unreachable, so the app
+   always works on home turf. Coordinates are approximate. */
+window.OFFLINE_PLACES=[
+  {name:"Village Park Restaurant",lat:3.1497,lon:101.6260,cuisine:"nasi lemak",amenity:"restaurant"},
+  {name:"Restoran Nasi Kandar Pelita",lat:3.1620,lon:101.7160,cuisine:"mamak",amenity:"restaurant"},
+  {name:"Sungai Wang Nasi Lemak",lat:3.1456,lon:101.7100,cuisine:"malaysian",amenity:"restaurant"},
+  {name:"Lou Yau Kee Bak Kut Teh",lat:3.0760,lon:101.5860,cuisine:"chinese",amenity:"restaurant"},
+  {name:"Restoran Yusoof dan Zakhir",lat:3.1456,lon:101.6958,cuisine:"mamak",amenity:"restaurant"},
+  {name:"Sunway Pyramid Food Court",lat:3.0726,lon:101.6068,cuisine:"food court",amenity:"food_court"},
+  {name:"Sunway Pyramid",lat:3.0726,lon:101.6068,cuisine:"",amenity:"mall"},
+  {name:"SS15 Courtyard",lat:3.0772,lon:101.5870,cuisine:"cafe",amenity:"restaurant"},
+  {name:"Restoran Win Heng Seng",lat:3.1430,lon:101.7180,cuisine:"chinese",amenity:"restaurant"},
+  {name:"Jalan Alor Food Street",lat:3.1456,lon:101.7080,cuisine:"street food",amenity:"food_court"},
+  {name:"Madam Kwan's KLCC",lat:3.1578,lon:101.7120,cuisine:"malaysian",amenity:"restaurant"},
+  {name:"Suria KLCC",lat:3.1578,lon:101.7120,cuisine:"",amenity:"mall"},
+  {name:"Restoran Rebung Chef Ismail",lat:3.1180,lon:101.6700,cuisine:"malay buffet",amenity:"restaurant"},
+  {name:"Nasi Lemak Tanglin",lat:3.1490,lon:101.6840,cuisine:"nasi lemak",amenity:"restaurant"},
+  {name:"Restoran Ali Maju (SS2)",lat:3.1180,lon:101.6230,cuisine:"mamak",amenity:"restaurant"},
+  {name:"Mid Valley Megamall",lat:3.1175,lon:101.6770,cuisine:"",amenity:"mall"},
+  {name:"Devi's Corner Bangsar",lat:3.1320,lon:101.6710,cuisine:"mamak",amenity:"restaurant"},
+  {name:"VCR Cafe",lat:3.1390,lon:101.7000,cuisine:"cafe",amenity:"restaurant"},
+  {name:"Restoran Sek Yuen",lat:3.1640,lon:101.7050,cuisine:"chinese",amenity:"restaurant"},
+  {name:"1 Utama Shopping Centre",lat:3.1500,lon:101.6160,cuisine:"",amenity:"mall"},
+  {name:"Murni Discovery SS2",lat:3.1170,lon:101.6240,cuisine:"mamak",amenity:"restaurant"},
+  {name:"The Gardens Mall",lat:3.1180,lon:101.6780,cuisine:"",amenity:"mall"},
+  {name:"Betel Leaf Indian Restaurant",lat:3.1430,lon:101.6970,cuisine:"indian",amenity:"restaurant"},
+  {name:"Lot 10 Hutong",lat:3.1470,lon:101.7110,cuisine:"food court",amenity:"food_court"},
+  {name:"Restoran Beh Brothers Kepong",lat:3.2100,lon:101.6360,cuisine:"chinese",amenity:"restaurant"}
+];
 /* ============================================================
    MAKAN MANA?  — single-file PWA
    No backend, no API keys. OSM Overpass + OSRM + browser geo.
@@ -467,7 +515,7 @@ const $$ = s => [...document.querySelectorAll(s)];
 const fmt = n => 'RM ' + (Math.round(n*100)/100).toFixed(2);
 
 /* ---------- persisted settings ---------- */
-const DEFAULTS = { radius:3, maxTime:15, openOnly:false, incMall:true, incFast:true, cuisines:[], pro:false, filterMode:'distance' };
+const DEFAULTS = { radius:3, maxTime:15, openOnly:false, incMall:true, incFast:true, cuisines:[], pro:false, filterMode:'distance', geoapifyKey:'' };
 let settings = load('mm_settings', DEFAULTS);
 function load(k,f){ try{ return {...f, ...JSON.parse(localStorage.getItem(k)||'{}')}; }catch(e){ return {...f}; } }
 function saveSettings(){ try{ localStorage.setItem('mm_settings', JSON.stringify(settings)); }catch(e){} }
@@ -704,67 +752,114 @@ function stopFlash(){
   }
 }
 
-/* ---- Overpass: nearby food amenities ---- */
+/* ---- Places lookup: Geoapify (fast, keyed) → Overpass (free) → offline ---- */
 let placesCache={ key:null, data:null, ts:0 };
-async function fetchPlaces(p){
-  // Determine search radius. In 'time' mode, convert the time budget into a
-  // generous distance (assume ~1km/min city driving, capped) so we don't miss
-  // reachable spots. In 'distance' mode, use the radius slider directly.
-  let km;
+
+function searchRadiusKm(){
   if((settings.filterMode||'distance')==='time'){
-    km = settings.maxTime>=30 ? 30 : Math.min(30, Math.max(3, settings.maxTime));
-  } else {
-    km = (settings.radius>=15) ? 25 : (settings.radius||3);
+    return settings.maxTime>=30 ? 30 : Math.min(30, Math.max(3, settings.maxTime));
   }
-  const r = Math.round(km*1000);
+  return (settings.radius>=15) ? 25 : (settings.radius||3);
+}
+
+function activeKey(){ return (settings.geoapifyKey && settings.geoapifyKey.length>10) ? settings.geoapifyKey : BUILTIN_GEOAPIFY_KEY; }
+
+async function fetchPlaces(p){
+  const km=searchRadiusKm();
+  const r=Math.round(km*1000);
   const lat=p.lat, lon=p.lon;
 
-  // Build the amenity list. Use EXACT-match statements (indexed, fast) rather
-  // than an anchored regex (~"^(...)$") which forces a slow full scan and is the
-  // main reason these queries time out on busy public servers.
+  // cache by ~1km grid + radius + key settings
+  const cacheKey=`${lat.toFixed(2)},${lon.toFixed(2)}|${r}|${settings.incFast?'f':''}${settings.incMall?'m':''}`;
+  if(placesCache.data && placesCache.key===cacheKey && (Date.now()-placesCache.ts)<10*60*1000){
+    return placesCache.data;
+  }
+
+  let parsed=null, errs=[];
+
+  // 1) Geoapify — fast, reliable. Uses built-in key, or the user's own if set.
+  if(activeKey()){
+    try{ parsed = await fetchGeoapify(p, r); }
+    catch(e){ errs.push('geoapify: '+((e&&e.message)||e)); }
+  }
+
+  // 2) Overpass — free, no key, but often overloaded
+  if(!parsed || !parsed.length){
+    try{ const op = await fetchOverpass(p, r); if(op && op.length) parsed=op; }
+    catch(e){ errs.push((e&&e.message)||String(e)); }
+  }
+
+  // 3) Offline bundled data (always works in covered areas)
+  if(!parsed || !parsed.length){
+    const off = offlineNearby(lat, lon, r);
+    if(off.length){ parsed=off; }
+  }
+
+  if(!parsed || !parsed.length){
+    console.warn('All sources failed:', errs.join(' | '));
+    throw new Error(errs[errs.length-1] || 'no places found');
+  }
+
+  placesCache={ key:cacheKey, data:parsed, ts:Date.now() };
+  return parsed;
+}
+
+/* ---- Geoapify Places API (GET, CORS-friendly, GeoJSON) ---- */
+async function fetchGeoapify(p, r){
+  const cats=['catering.restaurant','catering.fast_food'];
+  if(settings.incFast) cats.push('catering.food_court');
+  if(settings.incMall) cats.push('commercial.shopping_mall');
+  const catParam=cats.join(',');
+  const limit=60;
+  const url=`https://api.geoapify.com/v2/places?categories=${encodeURIComponent(catParam)}`
+    +`&filter=circle:${p.lon},${p.lat},${r}`
+    +`&bias=proximity:${p.lon},${p.lat}`
+    +`&limit=${limit}&apiKey=${encodeURIComponent(activeKey())}`;
+  const ctrl=new AbortController();
+  const to=setTimeout(()=>ctrl.abort('timeout'), 12000);
+  const res=await fetch(url, { signal:ctrl.signal });
+  clearTimeout(to);
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const j=await res.json();
+  const feats=(j&&j.features)||[];
+  return feats.map(f=>{
+    const pr=f.properties||{};
+    const lon=pr.lon ?? (f.geometry&&f.geometry.coordinates&&f.geometry.coordinates[0]);
+    const lat=pr.lat ?? (f.geometry&&f.geometry.coordinates&&f.geometry.coordinates[1]);
+    if(lat==null||lon==null||!pr.name) return null;
+    const cats=pr.categories||[];
+    let amenity='restaurant';
+    if(cats.some(c=>c.includes('fast_food'))) amenity='fast_food';
+    else if(cats.some(c=>c.includes('food_court'))) amenity='food_court';
+    else if(cats.some(c=>c.includes('shopping_mall'))) amenity='mall';
+    // cuisine from category tail e.g. catering.restaurant.italian
+    let cuisine='';
+    const cz=cats.find(c=>c.startsWith('catering.restaurant.'));
+    if(cz) cuisine=cz.split('.').pop().replace(/_/g,' ');
+    return { name:pr.name, lat, lon, cuisine, amenity, hours:pr.opening_hours||'', openState:openNow(pr.opening_hours) };
+  }).filter(Boolean);
+}
+
+/* ---- Overpass fallback (free, keyless, GET to avoid CORS preflight) ---- */
+async function fetchOverpass(p, r){
+  const lat=p.lat, lon=p.lon;
   const amen=['restaurant'];
   if(settings.incFast){ amen.push('fast_food'); amen.push('food_court'); }
-
   const around=`(around:${r},${lat},${lon})`;
   let blocks='';
-  for(const a of amen){
-    blocks += `nwr["amenity"="${a}"]["name"]${around};`;
-  }
-  if(settings.pro && settings.cuisines && settings.cuisines.length){
-    // optional cuisine narrowing (Pro) — regex only on the cuisine tag, small set
-    const cz=settings.cuisines.join('|');
-    blocks += `nwr["amenity"="restaurant"]["cuisine"~"${cz}",i]${around};`;
-  }
-  if(settings.incMall){
-    blocks += `nwr["shop"="mall"]["name"]${around};`;
-  }
-
-  // Lower server-side timeout + modest result cap = fast failure or fast success.
-  const q=`[out:json][timeout:25];(${blocks});out center 45;`;
-
-  // Cache: if we already pulled this same area+settings recently, reuse it.
-  // Rounds location to ~1km grid so small GPS drift still hits the cache.
-  const cacheKey=`${lat.toFixed(2)},${lon.toFixed(2)}|${q.length}|${blocks.length}`;
-  if(placesCache.data && placesCache.key===cacheKey && (Date.now()-placesCache.ts)<10*60*1000){
-    return placesCache.data;   // fresh enough — instant, no network
-  }
+  for(const a of amen) blocks += `nwr["amenity"="${a}"]["name"]${around};`;
+  if(settings.incMall) blocks += `nwr["shop"="mall"]["name"]${around};`;
+  const q=`[out:json][timeout:20];(${blocks});out center 45;`;
 
   const endpoints=[
     'https://overpass-api.de/api/interpreter',
-    'https://overpass.kumi.systems/api/interpreter',
-    'https://overpass.private.coffee/api/interpreter'
+    'https://overpass.kumi.systems/api/interpreter'
   ];
-
-  // Try each endpoint in turn. Use GET with the query in the URL — this is a
-  // "simple" cross-origin request that needs NO preflight, the most reliable
-  // path from a browser. (The previous POST + Content-Type header triggered a
-  // CORS preflight that several mirrors reject, which Safari reports as an
-  // aborted fetch — the "Fetch is aborted" you saw.)
   let data=null, lastErr='';
   for(const ep of endpoints){
     try{
       const ctrl=new AbortController();
-      const to=setTimeout(()=>ctrl.abort('timeout'), 25000);
+      const to=setTimeout(()=>ctrl.abort('timeout'), 12000);
       const res=await fetch(ep+'?data='+encodeURIComponent(q), { signal:ctrl.signal });
       clearTimeout(to);
       if(!res.ok){ lastErr='HTTP '+res.status+' @'+host(ep); continue; }
@@ -772,31 +867,29 @@ async function fetchPlaces(p){
       if(j && Array.isArray(j.elements)){ data=j; break; }
       lastErr='no data @'+host(ep);
     }catch(e){
-      const nm=(e&&e.name)||'';
-      const ms=(e&&e.message)||String(e)||'error';
+      const nm=(e&&e.name)||''; const ms=(e&&e.message)||String(e)||'error';
       lastErr=(nm?nm+': ':'')+ms+' @'+host(ep);
     }
   }
-
-  if(!data){ console.warn('Overpass failed:', lastErr); throw new Error(lastErr||'overpass'); }
-
-  const parsed=(data.elements||[]).map(el=>{
+  if(!data) throw new Error(lastErr||'overpass');
+  return (data.elements||[]).map(el=>{
     const t=el.tags||{};
     const elat=el.lat ?? (el.center&&el.center.lat);
     const elon=el.lon ?? (el.center&&el.center.lon);
     if(elat==null||elon==null) return null;
     const amenity = t.amenity || (t.shop==='mall' ? 'mall' : '');
-    return {
-      name:t.name,
-      lat:elat, lon:elon,
-      cuisine:(t.cuisine||'').replace(/[_;]/g,' ').split(',')[0]||'',
-      amenity,
-      hours:t.opening_hours||'',
-      openState:openNow(t.opening_hours)
-    };
+    return { name:t.name, lat:elat, lon:elon, cuisine:(t.cuisine||'').replace(/[_;]/g,' ').split(',')[0]||'', amenity, hours:t.opening_hours||'', openState:openNow(t.opening_hours) };
   }).filter(Boolean);
-  placesCache={ key:cacheKey, data:parsed, ts:Date.now() };
-  return parsed;
+}
+
+/* ---- Offline fallback: bundled Klang Valley / KL spots ---- */
+function offlineNearby(lat, lon, r){
+  if(!window.OFFLINE_PLACES) return [];
+  return OFFLINE_PLACES.map(o=>{
+    const d=haversine({lat,lon},{lat:o.lat,lon:o.lon});
+    return {...o, _d:d};
+  }).filter(o=>o._d<=r)
+    .map(o=>({ name:o.name, lat:o.lat, lon:o.lon, cuisine:o.cuisine||'', amenity:o.amenity||'restaurant', hours:'', openState:'unknown' }));
 }
 function host(u){ try{ return new URL(u).hostname.replace('overpass.','').replace('.api',''); }catch(e){ return u; } }
 // Promise.any fallback (older Safari) — resolves on first fulfilled, rejects if all reject
@@ -1193,6 +1286,14 @@ function bindSettings(){
   $('#incMall').onchange=e=>{ settings.incMall=e.target.checked; saveSettings(); };
   $('#incFast').onchange=e=>{ settings.incFast=e.target.checked; saveSettings(); };
 
+  // Geoapify API key
+  const keyInput=$('#geoapifyKey');
+  if(keyInput){
+    keyInput.value=settings.geoapifyKey||'';
+    updateKeyStatus();
+    keyInput.oninput=e=>{ settings.geoapifyKey=e.target.value.trim(); saveSettings(); updateKeyStatus(); placesCache={key:null,data:null,ts:0}; };
+  }
+
   // filter mode: distance vs time
   applyFilterMode();
   $$('#filterModeSeg button').forEach(b=>{
@@ -1214,8 +1315,7 @@ function bindSettings(){
 const RAD_MAX=15, TIME_MAX=30;
 function radLabel(v){ return v>=RAD_MAX ? RAD_MAX+'+' : v; }
 function timeLabel(v){ return v>=TIME_MAX ? TIME_MAX+'+' : v; }
-function applyFilterMode(){
-  const mode=settings.filterMode||'distance';
+function applyFilterMode(){  const mode=settings.filterMode||'distance';
   $$('#filterModeSeg button').forEach(b=> b.classList.toggle('on', b.dataset.fmode===mode));
   const distRow=$('#radiusRow'), timeRow=$('#timeRow');
   if(distRow) distRow.style.display = mode==='distance' ? '' : 'none';
@@ -1225,6 +1325,12 @@ function applyProState(){
   const lock=$('#cravingLock');
   if(settings.pro){ lock.style.display='none'; }
   else { lock.style.display='flex'; }
+}
+function updateKeyStatus(){
+  const el=$('#keyStatus'); if(!el) return;
+  const userKey=settings.geoapifyKey && settings.geoapifyKey.length>10;
+  if(userKey){ el.textContent='your key'; el.classList.add('ok'); }
+  else { el.textContent='built-in'; el.classList.add('ok'); }   // always active now
 }
 
 /* ============================================================
