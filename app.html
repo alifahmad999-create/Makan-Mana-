@@ -735,7 +735,7 @@ async function doSpin(){
     if(window.TEST_MODE){
       places.unshift({
         name:"★ TEST — Makan Mana Diner",
-        lat:userPos.lat+0.004, lon:userPos.lon+0.004,
+        lat:userPos.lat+0.03, lon:userPos.lon+0.03,   // ~4-5km away: removes proximity edge so we see the verified bias in isolation
         cuisine:"nasi lemak", amenity:"restaurant"
       });
     }
@@ -1209,7 +1209,11 @@ function verifiedMultiplier(place){
 }
 
 function verifiedWinCapHit(){
-  if(recentWinnerVerified.length < 3) return false;
+  // In TEST_MODE, engage the cap as soon as there's any history, so testers can
+  // observe both the win and runner-up states quickly (normal mode warms up over
+  // a few spins so early spins aren't artificially throttled).
+  const minHist = window.TEST_MODE ? 1 : 3;
+  if(recentWinnerVerified.length < minHist) return false;
   const recent = recentWinnerVerified.slice(-VERIFIED_WIN_WINDOW);
   return recent.filter(Boolean).length / recent.length >= VERIFIED_MAX_WIN_RATE;
 }
