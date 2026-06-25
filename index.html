@@ -121,11 +121,22 @@
   .wheel-emoji{display:block;font-size:38px;margin-bottom:6px;-webkit-text-fill-color:initial;animation:emojibounce 2.2s ease-in-out infinite;transition:opacity .22s ease, transform .22s ease}
   .wheel-emoji.swap{opacity:0;transform:translateY(-8px) scale(.8);animation-play-state:paused}
   @keyframes emojibounce{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-7px) rotate(4deg)}}
-  .wheel-label small{display:block;font-size:13px;font-weight:600;color:var(--cream-dim);margin-top:8px;font-family:'Inter';letter-spacing:0}
+  .wheel-label small{display:block;font-size:13px;font-weight:600;color:var(--cream-dim);margin-top:8px;font-family:'Inter';letter-spacing:0;transition:opacity .2s ease}
   .wheel-label .cari{display:block;font-family:'Baloo 2',cursive;font-weight:800;font-size:28px;line-height:1.1}
   .wheel.spinning .wheel-label{animation:breathe 2.4s ease-in-out infinite}
   @keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
   .hint{color:var(--cream-faint);font-size:13px;text-align:center;max-width:240px;line-height:1.5}
+  .quick{width:100%;max-width:380px;margin:22px auto 0;display:flex;flex-direction:column;gap:14px;animation:quickIn .4s ease both}
+  @keyframes quickIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .quick-seg{margin:0}
+  .quick-slider{background:#fff;border:1px solid var(--line);border-radius:16px;padding:13px 15px}
+  .quick-slider-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+  .quick-lbl{font-size:13.5px;font-weight:700;color:var(--ink)}
+  .quick-val{font-size:13.5px;font-weight:800;color:var(--mango)}
+  .quick-chips{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  .chip{appearance:none;border:1.5px solid var(--line);background:#fff;color:var(--cream-dim);font-family:inherit;font-size:13px;font-weight:700;padding:9px 16px;border-radius:999px;cursor:pointer;transition:all .15s}
+  .chip.on{background:var(--pandan);border-color:var(--pandan);color:#fff}
+  .chip:active{transform:scale(.95)}
 
   /* ---------- Result card ---------- */
   .result{
@@ -141,6 +152,7 @@
   .result-name-link:active .result-name{opacity:.6}
   .result-cuisine{color:var(--cream-dim);font-size:13.5px;font-weight:500;margin-top:5px;text-transform:capitalize}
   .result-venue{color:var(--pandan);font-size:13px;font-weight:700;margin-top:3px}
+  .result-area{color:var(--cream-dim);font-size:12.5px;font-weight:500;margin-top:4px}
   .result-meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--line)}
   .meta-cell{padding:15px 12px;text-align:center;border-right:1px solid var(--line)}
   .meta-cell:last-child{border-right:none}
@@ -327,7 +339,27 @@
           <div class="wheel-ring"></div>
           <div class="wheel-label" id="wheelLabel"><span class="wheel-emoji" id="wheelEmoji">🍜</span>Makan<br>Mana?<small>Tap to spin</small></div>
         </button>
-        <p class="hint" id="spinHint">Tap the wheel and I'll pick a makan spot near you — filtered by how far you're willing to go.</p>
+        <p class="hint" id="spinHint">Tap the wheel and I'll pick a makan spot near you.</p>
+
+        <div class="quick" id="quickControls">
+          <div class="seg quick-seg" id="qFilterMode">
+            <button class="on" data-fmode="distance">📍 Distance</button>
+            <button data-fmode="time">⏱️ Drive time</button>
+          </div>
+          <div class="quick-slider" id="qRadiusRow">
+            <div class="quick-slider-top"><span class="quick-lbl">Search radius</span><span class="quick-val"><span id="qRadVal">3</span> km</span></div>
+            <input type="range" id="qRadius" min="1" max="15" step="1" value="3">
+          </div>
+          <div class="quick-slider" id="qTimeRow" style="display:none">
+            <div class="quick-slider-top"><span class="quick-lbl">Max drive time</span><span class="quick-val"><span id="qTimeVal">15</span> min</span></div>
+            <input type="range" id="qTime" min="5" max="30" step="5" value="15">
+          </div>
+          <div class="quick-chips">
+            <button class="chip" id="qOpen" data-on="false">Open now</button>
+            <button class="chip on" id="qMall" data-on="true">Malls</button>
+            <button class="chip on" id="qFast" data-on="true">Fast food</button>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -539,6 +571,7 @@ $$('nav button').forEach(b=>{
     $$('.view').forEach(v=>v.classList.remove('on'));
     b.classList.add('on');
     $('#'+b.dataset.view).classList.add('on');
+    if(b.dataset.view==='v-spin') syncQuickControls();   // reflect any settings changes
     buzz(8);
   };
 });
@@ -595,9 +628,7 @@ const FLASH=[
   '#f0995e', // soft orange
   '#e8b84b'  // warm amber
 ];
-let flashTimer=null, emojiTimer=null, spinning=false;
-
-bindWheel();
+let flashTimer=null, emojiTimer=null, statusTimer=null, spinning=false;
 
 async function doSpin(){
   if(spinning) return;            // guard against double-taps mid-spin
@@ -625,22 +656,36 @@ async function doSpin(){
       renderEmpty('No spots nearby','Nothing found in this area. Try a bigger radius in Settings.');
       return;
     }
-    // For a randomiser we want variety across the WHOLE radius, not just the
-    // nearest few. Compute straight-line distance for all, then take a spread:
-    // some near, some mid, some far — capped so OSRM routing stays light.
-    const all = places
-      .map(p=>({...p, crow:haversine(userPos,p)}))
-      .sort((a,b)=>a.crow-b.crow);
-
-    let near;
-    if(all.length<=22){
-      near=all;
-    } else {
-      // even sampling across the sorted-by-distance list for a good spread
-      const N=22, step=all.length/N;
-      const picked=[];
-      for(let i=0;i<N;i++){ picked.push(all[Math.floor(i*step)]); }
-      near=[all[0], all[1], all[2], ...picked].filter((v,i,a)=>a.indexOf(v)===i);
+    // For a randomiser we want variety across the WHOLE radius. Geoapify returns
+    // places in roughly arbitrary order within the circle, so we explicitly bucket
+    // by distance band and draw from each — guaranteeing a near/mid/far mix rather
+    // than whatever cluster the API happened to front-load.
+    const withCrow = places.map(p=>({...p, crow:haversine(userPos,p)}));
+    const maxKm = searchRadiusKm();
+    // three bands: near (0-33%), mid (33-66%), far (66-100%) of the radius
+    const b1=maxKm*1000/3, b2=maxKm*1000*2/3;
+    const bandNear = withCrow.filter(p=>p.crow<b1);
+    const bandMid  = withCrow.filter(p=>p.crow>=b1 && p.crow<b2);
+    const bandFar  = withCrow.filter(p=>p.crow>=b2);
+    const pickFrom=(arr,n)=>{
+      if(arr.length<=n) return arr.slice();
+      const out=[], used=new Set();
+      while(out.length<n && used.size<arr.length){
+        const i=Math.floor(Math.random()*arr.length);
+        if(!used.has(i)){ used.add(i); out.push(arr[i]); }
+      }
+      return out;
+    };
+    // weight the draw toward nearer bands but always include some far options
+    let near=[
+      ...pickFrom(bandNear, 9),
+      ...pickFrom(bandMid, 7),
+      ...pickFrom(bandFar, 6)
+    ];
+    // if a band was empty, backfill from the whole set so we still have ~20
+    if(near.length<12){
+      const extra=pickFrom(withCrow.filter(p=>!near.includes(p)), 12-near.length);
+      near=[...near, ...extra];
     }
 
     const withRoad = await addRoadDistances(userPos, near);
@@ -668,8 +713,6 @@ async function doSpin(){
     // sort for the runner-up list, but keep the full spread for picking
     pool.sort((a,b)=>a.mins-b.mins);
     lastResults = pool;
-    window.__poolSize = pool.length;
-    window.__rawCount = places.length;
 
     // pick a weighted-random winner — flatter weighting so far places have a real shot.
     // Avoid repeating the last couple of winners when the pool is big enough.
@@ -683,9 +726,11 @@ async function doSpin(){
     recentWinners.push(winner.name);
     if(recentWinners.length>3) recentWinners.shift();
 
-    // spin time scales with the active setting (small=fast, large=longer)
-    const scaleN = mode==='time' ? Math.min(settings.maxTime,30)/2 : Math.min(settings.radius,15);
-    const dynMin = 1400 + scaleN*70;   // ~1.5s small … ~2.5s wide — a proper spin
+    // Spin duration: deliberately unhurried so each result feels considered, and
+    // to discourage rapid-fire abuse. Base ~6s, scaling up with radius/time budget
+    // so wider searches "think" longer (up to ~10s).
+    const scaleN = mode==='time' ? Math.min(settings.maxTime,30) : Math.min(settings.radius,15)*2;
+    const dynMin = 6000 + scaleN*130;   // ~6.5s small … ~10s wide
     const elapsed=Date.now()-spinStart;
     if(elapsed<dynMin) await new Promise(r=>setTimeout(r, dynMin-elapsed));
     stopFlash();
@@ -708,7 +753,7 @@ function startFlash(){
   wheel.classList.add('spinning');
   // keep a food emoji visible; it will cycle with a fade while we search
   const first=SPIN_EMOJI[Math.floor(Math.random()*SPIN_EMOJI.length)];
-  if(wheelLabel) wheelLabel.innerHTML=`<span class="wheel-emoji" id="spinEmoji">${first}</span><span class="cari">Cari…</span><small>Finding makan</small>`;
+  if(wheelLabel) wheelLabel.innerHTML=`<span class="wheel-emoji" id="spinEmoji">${first}</span><span class="cari">Cari…</span><small id="spinStatus">Finding makan</small>`;
   // cycle the emoji with a gentle fade
   clearInterval(emojiTimer);
   let ei=SPIN_EMOJI.indexOf(first);
@@ -722,11 +767,20 @@ function startFlash(){
       em.classList.remove('swap');       // fade back in with new emoji
     },220);
   },900);
+  // rotate status lines so a longer spin still feels alive
+  clearInterval(statusTimer);
+  let si=0;
+  statusTimer=setInterval(()=>{
+    const st=$('#spinStatus'); if(!st){ clearInterval(statusTimer); return; }
+    si=(si+1)%SPIN_STATUS.length;
+    st.style.opacity='0';
+    setTimeout(()=>{ st.textContent=SPIN_STATUS[si]; st.style.opacity=''; },200);
+  },1800);
   // accessibility: if the user prefers reduced motion, hold one calm colour and don't cycle
   const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let i=Math.floor(Math.random()*FLASH.length);
   applyFlash(FLASH[i]);
-  if(reduce){ clearInterval(emojiTimer); return; }
+  if(reduce){ clearInterval(emojiTimer); clearInterval(statusTimer); return; }
   // walk the palette in order (it's arranged around the colour wheel) for a smooth drift
   clearInterval(flashTimer);
   flashTimer=setInterval(()=>{
@@ -734,6 +788,7 @@ function startFlash(){
     applyFlash(FLASH[i]);
   },750);   // slow: the 0.85s CSS transition cross-fades between each
 }
+const SPIN_STATUS=['Finding makan','Checking nearby','Sniffing out spots','Reading the map','Asking around','Almost there'];
 const SPIN_EMOJI=['🍜','🍛','🍚','🍢','🥘','🍤','🧋','🍙','🌶️','🥟','🍲','🍱','🥢','🍳'];
 function shuffle(a){
   for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
@@ -761,6 +816,8 @@ function stopFlash(){
   flashTimer=null;
   clearInterval(emojiTimer);
   emojiTimer=null;
+  clearInterval(statusTimer);
+  statusTimer=null;
   const wheel=wheelEl();
   if(wheel){
     wheel.style.background='';
@@ -861,7 +918,9 @@ async function fetchGeoapify(p, r){
     const cand=[pr.building, pr.complex, pr.suburb].filter(Boolean);
     const mallish=cand.find(v=>/mall|megamall|pyramid|plaza|centre|center|complex|paradigm|gateway|avenue/i.test(v) && v!==pr.name);
     if(mallish) venue=mallish;
-    return { name:pr.name, lat, lon, cuisine, amenity, venue, hours:pr.opening_hours||'', openState:openNow(pr.opening_hours) };
+    const area = pr.suburb || pr.district || pr.city || pr.address_line2 || '';
+    const addr = pr.address_line2 || pr.formatted || '';
+    return { name:pr.name, lat, lon, cuisine, amenity, venue, area, addr, hours:pr.opening_hours||'', openState:openNow(pr.opening_hours) };
   }).filter(Boolean);
 }
 
@@ -1039,6 +1098,7 @@ function renderResult(w, others){
         <a class="result-name-link" href="${placeUrl}" target="_blank" rel="noopener"><div class="result-name">${esc(w.name)}</div></a>
         ${w.venue?`<div class="result-venue">at ${esc(w.venue)}</div>`:''}
         ${w.cuisine?`<div class="result-cuisine">${esc(w.cuisine)} · ${labelAmenity(w.amenity)}</div>`:`<div class="result-cuisine">${labelAmenity(w.amenity)}</div>`}
+        ${(w.area && !w.venue)?`<div class="result-area">📍 ${esc(w.area)}</div>`:''}
       </div>
       <div class="result-meta">
         <div class="meta-cell"><div class="meta-val">${w.km.toFixed(1)}</div><div class="meta-lbl">km away</div></div>
@@ -1075,6 +1135,28 @@ function renderEmpty(title,msg,debug){
   </div>`;
   $('#retry').onclick=()=>{ resetWheel(); setTimeout(()=>doSpin(),120); };
 }
+function quickControlsHTML(){
+  return `
+        <div class="quick" id="quickControls">
+          <div class="seg quick-seg" id="qFilterMode">
+            <button data-fmode="distance">📍 Distance</button>
+            <button data-fmode="time">⏱️ Drive time</button>
+          </div>
+          <div class="quick-slider" id="qRadiusRow">
+            <div class="quick-slider-top"><span class="quick-lbl">Search radius</span><span class="quick-val"><span id="qRadVal">3</span> km</span></div>
+            <input type="range" id="qRadius" min="1" max="15" step="1" value="3">
+          </div>
+          <div class="quick-slider" id="qTimeRow" style="display:none">
+            <div class="quick-slider-top"><span class="quick-lbl">Max drive time</span><span class="quick-val"><span id="qTimeVal">15</span> min</span></div>
+            <input type="range" id="qTime" min="5" max="30" step="5" value="15">
+          </div>
+          <div class="quick-chips">
+            <button class="chip" id="qOpen">Open now</button>
+            <button class="chip" id="qMall">Malls</button>
+            <button class="chip" id="qFast">Fast food</button>
+          </div>
+        </div>`;
+}
 const IDLE_EMOJI=['🍜','🍛','🍚','🍢','🥘','🍤','🧋','🍙','🌶️','🥟'];
 function resetWheel(){
   const em=IDLE_EMOJI[Math.floor(Math.random()*IDLE_EMOJI.length)];
@@ -1083,12 +1165,50 @@ function resetWheel(){
       <div class="wheel-ring"></div>
       <div class="wheel-label" id="wheelLabel"><span class="wheel-emoji">${em}</span>Makan<br>Mana?<small>Tap to spin</small></div>
     </button>
-    <p class="hint">Tap the wheel and I'll pick a makan spot near you.</p>`;
+    <p class="hint">Tap the wheel and I'll pick a makan spot near you.</p>
+    ${quickControlsHTML()}`;
   bindWheel();
 }
 function bindWheel(){
   const w=$('#wheel');
   if(w) w.onclick=()=>{ if(!spinning) doSpin(); };
+  bindQuickControls();
+}
+function bindQuickControls(){
+  const seg=$('#qFilterMode'); if(!seg) return;   // quick panel only exists pre-spin
+  // reflect current settings
+  syncQuickControls();
+  // filter mode
+  $$('#qFilterMode button').forEach(btn=>{
+    btn.onclick=()=>{ settings.filterMode=btn.dataset.fmode; saveSettings(); syncQuickControls(); syncSettingsPage(); };
+  });
+  // sliders
+  const qr=$('#qRadius'); if(qr) qr.oninput=e=>{ settings.radius=+e.target.value; $('#qRadVal').textContent=radLabel(settings.radius); saveSettings(); syncSettingsPage(); };
+  const qt=$('#qTime'); if(qt) qt.oninput=e=>{ settings.maxTime=+e.target.value; $('#qTimeVal').textContent=timeLabel(settings.maxTime); saveSettings(); syncSettingsPage(); };
+  // chips
+  const chip=(id,key)=>{ const el=$(id); if(!el) return; el.onclick=()=>{ settings[key]=!settings[key]; saveSettings(); syncQuickControls(); syncSettingsPage(); placesCache={key:null,data:null,ts:0}; }; };
+  chip('#qOpen','openOnly'); chip('#qMall','incMall'); chip('#qFast','incFast');
+}
+function syncQuickControls(){
+  const seg=$('#qFilterMode'); if(!seg) return;
+  const mode=settings.filterMode||'distance';
+  $$('#qFilterMode button').forEach(b=>b.classList.toggle('on', b.dataset.fmode===mode));
+  const rRow=$('#qRadiusRow'), tRow=$('#qTimeRow');
+  if(rRow) rRow.style.display = mode==='distance' ? '' : 'none';
+  if(tRow) tRow.style.display = mode==='time' ? '' : 'none';
+  if($('#qRadius')){ $('#qRadius').value=settings.radius; $('#qRadVal').textContent=radLabel(settings.radius); }
+  if($('#qTime')){ $('#qTime').value=settings.maxTime; $('#qTimeVal').textContent=timeLabel(settings.maxTime); }
+  const setChip=(id,on)=>{ const el=$(id); if(el){ el.classList.toggle('on',!!on); el.dataset.on=!!on; } };
+  setChip('#qOpen',settings.openOnly); setChip('#qMall',settings.incMall); setChip('#qFast',settings.incFast);
+}
+// keep the Settings page controls in sync when changed from the home quick panel
+function syncSettingsPage(){
+  if($('#radius')){ $('#radius').value=settings.radius; if($('#radVal'))$('#radVal').textContent=radLabel(settings.radius); }
+  if($('#maxTime')){ $('#maxTime').value=settings.maxTime; if($('#timeVal'))$('#timeVal').textContent=timeLabel(settings.maxTime); }
+  if($('#openOnly')) $('#openOnly').checked=settings.openOnly;
+  if($('#incMall')) $('#incMall').checked=settings.incMall;
+  if($('#incFast')) $('#incFast').checked=settings.incFast;
+  if(typeof applyFilterMode==='function') applyFilterMode();
 }
 function labelAmenity(a){
   return ({restaurant:'Restaurant',cafe:'Café',fast_food:'Quick bite',food_court:'Food court',mall:'Shopping mall'})[a]||'Makan spot';
@@ -1383,6 +1503,9 @@ if('serviceWorker' in navigator){
     navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(()=>{});
   }catch(e){}
 }
+
+// Initialise the wheel + quick controls (runs last, after all consts are defined)
+bindWheel();
 </script>
 </body>
 </html>
