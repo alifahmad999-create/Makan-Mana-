@@ -84,6 +84,8 @@
   .rc-go{background:linear-gradient(135deg,var(--pandan),var(--pandan-deep));color:#fff}
   .demo-cap{font-size:13px;color:var(--ink-soft);font-weight:500}
   .demo-cap b{color:var(--ink)}
+  .demo-credit{font-size:12px;color:var(--ink-soft);opacity:.7;margin-top:2px}
+  .demo-credit a{color:var(--pandan-deep);font-weight:600}
 
   /* ---------- logos / trust ---------- */
   .trust{padding:30px 0 8px;text-align:center}
@@ -199,12 +201,20 @@
     .features{grid-template-columns:1fr}
     .onboard-grid{grid-template-columns:1fr;gap:32px}
     .nav-links .muted{display:none}
+    .nav-links{gap:8px}
+    .nav-cta{gap:8px}
+    .nav-cta .btn{padding:9px 13px;font-size:13px;white-space:nowrap;line-height:1.1}
+    .brand{font-size:17px;gap:9px}
+    .brand .logo{width:34px;height:34px}
+    .nav-in{height:60px}
   }
   @media(max-width:560px){
     .field-row{grid-template-columns:1fr}
     .stat-row{gap:30px}
     .global,.final{padding:36px 22px}
     section.block{padding:54px 0}
+    .nav-cta .btn{padding:8px 11px;font-size:12.5px}
+    .brand{font-size:15px}
   }
   @media (prefers-reduced-motion: reduce){
     *{animation:none!important;transition:none!important}
@@ -277,6 +287,7 @@
         </div>
       </div>
       <p class="demo-cap">👆 <b>Try it</b> — this is the real thing</p>
+      <p class="demo-credit">by <a href="https://github.com/alifvhmad" target="_blank" rel="noopener">@alifahmad</a> · Powered by Claude</p>
     </div>
   </div>
 </header>
@@ -489,7 +500,7 @@
       <a href="#restaurants">For restaurants</a>
       <a href="app.html">Open app</a>
     </div>
-    <div class="foot-made">Made in Malaysia · for the whole world 🌏</div>
+    <div class="foot-made">Created by <a href="https://github.com/alifvhmad" target="_blank" rel="noopener" style="color:var(--ink);font-weight:600">@alifahmad</a> · Powered by Claude · Made in Malaysia 🌏</div>
   </div>
 </footer>
 
