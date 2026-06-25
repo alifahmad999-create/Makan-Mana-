@@ -624,11 +624,24 @@ async function doSpin(){
       renderEmpty('No spots nearby','Nothing found in this area. Try a bigger radius in Settings.');
       return;
     }
-    // compute road distances for the nearest N (cap to keep it light)
-    const near = places
+    // For a randomiser we want variety across the WHOLE radius, not just the
+    // nearest few. Compute straight-line distance for all, then take a spread:
+    // some near, some mid, some far — capped so OSRM routing stays light.
+    const all = places
       .map(p=>({...p, crow:haversine(userPos,p)}))
-      .sort((a,b)=>a.crow-b.crow)
-      .slice(0,12);
+      .sort((a,b)=>a.crow-b.crow);
+
+    let near;
+    if(all.length<=16){
+      near=all;
+    } else {
+      // even sampling across the sorted-by-distance list for a good spread
+      const N=16, step=all.length/N;
+      const picked=[];
+      for(let i=0;i<N;i++){ picked.push(all[Math.floor(i*step)]); }
+      // always include a couple of the very nearest too
+      near=[all[0], all[1], ...picked].filter((v,i,a)=>a.indexOf(v)===i);
+    }
 
     const withRoad = await addRoadDistances(userPos, near);
 
@@ -638,33 +651,32 @@ async function doSpin(){
     let pool = withRoad.slice();
 
     // 1) time filter — only in 'time' mode (and skip at the '30+' notch).
-    //    In 'distance' mode the radius already bounds things, so no time filter.
     if(mode==='time' && settings.maxTime<30){
       const timed = pool.filter(p=> p.mins<=settings.maxTime);
-      if(timed.length) pool = timed;        // only apply if it leaves something
+      if(timed.length) pool = timed;
     }
     // 2) open-now filter — only if the toggle is on AND it leaves something.
-    //    (OSM hours data is patchy, so never let it zero out the pool.)
     if(settings.openOnly){
-      const open = pool.filter(p=> p.openState==='open');   // strictly known-open
+      const open = pool.filter(p=> p.openState==='open');
       if(open.length) pool = open;
       else {
-        const notClosed = pool.filter(p=> p.openState!=='closed');  // include 'unknown'
+        const notClosed = pool.filter(p=> p.openState!=='closed');
         if(notClosed.length) pool = notClosed;
       }
     }
     // 3) absolute fallback so the wheel always lands
     if(!pool.length) pool = withRoad;
 
+    // sort for the runner-up list, but keep the full spread for picking
     pool.sort((a,b)=>a.mins-b.mins);
     lastResults = pool;
 
-    // pick a weighted-random winner (favor closer, but keep it fun)
+    // pick a weighted-random winner — flatter weighting so far places have a real shot
     const winner = weightedPick(pool);
 
     // spin time scales with the active setting (small=fast, large=longer)
     const scaleN = mode==='time' ? Math.min(settings.maxTime,30)/2 : Math.min(settings.radius,15);
-    const dynMin = 600 + scaleN*55;
+    const dynMin = 1400 + scaleN*70;   // ~1.5s small … ~2.5s wide — a proper spin
     const elapsed=Date.now()-spinStart;
     if(elapsed<dynMin) await new Promise(r=>setTimeout(r, dynMin-elapsed));
     stopFlash();
@@ -804,11 +816,11 @@ async function fetchPlaces(p){
 
 /* ---- Geoapify Places API (GET, CORS-friendly, GeoJSON) ---- */
 async function fetchGeoapify(p, r){
-  const cats=['catering.restaurant','catering.fast_food'];
-  if(settings.incFast) cats.push('catering.food_court');
+  const cats=['catering.restaurant'];
+  if(settings.incFast){ cats.push('catering.fast_food'); cats.push('catering.food_court'); }
   if(settings.incMall) cats.push('commercial.shopping_mall');
   const catParam=cats.join(',');
-  const limit=60;
+  const limit=100;
   const url=`https://api.geoapify.com/v2/places?categories=${encodeURIComponent(catParam)}`
     +`&filter=circle:${p.lon},${p.lat},${r}`
     +`&bias=proximity:${p.lon},${p.lat}`
@@ -830,12 +842,13 @@ async function fetchGeoapify(p, r){
     if(cats.some(c=>c.includes('fast_food'))) amenity='fast_food';
     else if(cats.some(c=>c.includes('food_court'))) amenity='food_court';
     else if(cats.some(c=>c.includes('shopping_mall'))) amenity='mall';
+    // honor the fast-food toggle even if the API returns mixed categories
+    if(!settings.incFast && amenity==='fast_food') return null;
+    if(!settings.incMall && amenity==='mall') return null;
     // cuisine from category tail e.g. catering.restaurant.italian
     let cuisine='';
     const cz=cats.find(c=>c.startsWith('catering.restaurant.'));
     if(cz) cuisine=cz.split('.').pop().replace(/_/g,' ');
-    // venue: the mall/building this eatery sits in, if Geoapify provides it.
-    // Geoapify sometimes returns the containing complex in these fields.
     let venue='';
     const cand=[pr.building, pr.complex, pr.suburb].filter(Boolean);
     const mallish=cand.find(v=>/mall|megamall|pyramid|plaza|centre|center|complex|paradigm|gateway|avenue/i.test(v) && v!==pr.name);
@@ -943,12 +956,12 @@ function haversine(a,b){
   return 2*R*Math.asin(Math.sqrt(s));
 }
 function weightedPick(arr){
-  // weight inversely to drive time so near places win more often, but not always.
-  // Bare malls are heavily down-weighted — "go eat at a mall" is too vague a pick;
-  // we'd rather suggest an actual eatery. They can still appear in the runner-up list.
+  // Flatter weighting: every candidate has a real chance regardless of distance
+  // (this is a randomiser, after all). Closer places get only a mild edge, and
+  // bare malls are still demoted so they rarely headline.
   const w=arr.map(p=>{
-    let base=1/Math.max(2,p.mins);
-    if(p.amenity==='mall') base*=0.08;   // strongly demote bare malls
+    let base=1/Math.pow(Math.max(2,p.mins),0.45);   // gentle distance bias
+    if(p.amenity==='mall') base*=0.08;
     return base;
   });
   const sum=w.reduce((a,b)=>a+b,0);
