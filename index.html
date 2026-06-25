@@ -834,7 +834,6 @@ async function fetchGeoapify(p, r){
   const limit=100;
   const url=`https://api.geoapify.com/v2/places?categories=${encodeURIComponent(catParam)}`
     +`&filter=circle:${p.lon},${p.lat},${r}`
-    +`&bias=proximity:${p.lon},${p.lat}`
     +`&limit=${limit}&apiKey=${encodeURIComponent(activeKey())}`;
   const ctrl=new AbortController();
   const to=setTimeout(()=>ctrl.abort('timeout'), 12000);
@@ -1039,6 +1038,7 @@ function renderResult(w, others){
     <div class="result">
       <div class="result-top">
         <div class="result-eyebrow">Tonight you makan at</div>
+        <div style="font-size:9px;color:var(--cream-faint);opacity:.6;margin:-4px 0 6px">${window.__lastSource||'?'} · found ${window.__rawCount||0} · pool ${window.__poolSize||0}</div>
         <a class="result-name-link" href="${placeUrl}" target="_blank" rel="noopener"><div class="result-name">${esc(w.name)}</div></a>
         ${w.venue?`<div class="result-venue">at ${esc(w.venue)}</div>`:''}
         ${w.cuisine?`<div class="result-cuisine">${esc(w.cuisine)} · ${labelAmenity(w.amenity)}</div>`:`<div class="result-cuisine">${labelAmenity(w.amenity)}</div>`}
