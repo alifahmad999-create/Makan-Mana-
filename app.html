@@ -545,7 +545,6 @@ const BUILTIN_GEOAPIFY_KEY="fa8d667b941a4847b5cde4335be6a639";
    Used only when both Geoapify and Overpass are unreachable, so the app
    always works on home turf. Coordinates are approximate. */
 window.OFFLINE_PLACES=[
-  {name:"★ TEST — Makan Mana Diner",lat:3.1488,lon:101.6940,cuisine:"nasi lemak",amenity:"restaurant"},
   {name:"Village Park Restaurant",lat:3.1497,lon:101.6260,cuisine:"nasi lemak",amenity:"restaurant"},
   {name:"Restoran Nasi Kandar Pelita",lat:3.1620,lon:101.7160,cuisine:"mamak",amenity:"restaurant"},
   {name:"Sungai Wang Nasi Lemak",lat:3.1456,lon:101.7100,cuisine:"malaysian",amenity:"restaurant"},
@@ -711,6 +710,7 @@ let flashTimer=null, emojiTimer=null, statusTimer=null, spinning=false;
 async function doSpin(){
   if(spinning) return;            // guard against double-taps mid-spin
   spinning=true;
+  track('spin');
   buzz(12);
   startFlash();                  // instant visual feedback on every tap
   const spinStart=Date.now();
@@ -729,16 +729,8 @@ async function doSpin(){
     }
 
     const places = await fetchPlaces(userPos);
-    // --- TEST MODE: inject the verified test diner right next to the user so it
-    //     always enters the draw, online or offline. Set TEST_MODE=false (or
-    //     delete this block + its VERIFIED/OFFLINE_PLACES entries) before launch.
-    if(window.TEST_MODE){
-      places.unshift({
-        name:"★ TEST — Makan Mana Diner",
-        lat:userPos.lat+0.03, lon:userPos.lon+0.03,   // ~4-5km away: removes proximity edge so we see the verified bias in isolation
-        cuisine:"nasi lemak", amenity:"restaurant"
-      });
-    }
+    // (Test-mode diner injection removed for launch. TEST_MODE machinery is
+    //  retained for future use but injects nothing.)
     if(!places.length){
       stopFlash(); spinning=false;
       renderEmpty('No spots nearby','Nothing found in this area. Try a bigger radius in Settings.');
@@ -815,6 +807,7 @@ async function doSpin(){
     recentWinners.push(winner.name);
     if(recentWinners.length>3) recentWinners.shift();
     noteWinner(winner);   // record verified status for the win-rate cap
+    track('pick', {name:winner.name, verified:isVerified(winner)});
 
     // Spin duration: deliberately unhurried so each result feels considered, and
     // to discourage rapid-fire abuse. Base ~6s, scaling up with radius/time budget
@@ -1121,8 +1114,40 @@ function haversine(a,b){
   const s=Math.sin(dLat/2)**2+Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLon/2)**2;
   return 2*R*Math.asin(Math.sqrt(s));
 }
+/* ============================================================================
+   MAKAN MANA — ANALYTICS TRACKER (app side)
+   ----------------------------------------------------------------------------
+   Fires lightweight events to the analytics Worker. Non-blocking and
+   fail-silent: if the network is down or the Worker is unset, the app behaves
+   exactly as before. No cookies, no personal data — only event name + (for
+   pick/go) the restaurant name and whether it was verified.
+
+   SETUP: set TRACK_URL to your Worker's /track endpoint after you deploy it.
+   Leave it '' to disable tracking entirely (e.g. during local testing).
+   ========================================================================== */
+const TRACK_URL = 'https://makanmana-analytics.alif-ahmad999.workers.dev/track'; // ← if your deployed Worker URL differs, change this one line
+
+function track(event, opts){
+  if(!TRACK_URL) return;                 // disabled / not configured
+  if(window.TEST_MODE) return;           // don't pollute real stats while testing
+  try{
+    const payload = { event };
+    if(opts && opts.name)     payload.name = opts.name;
+    if(opts && opts.verified) payload.verified = true;
+    const body = JSON.stringify(payload);
+    // sendBeacon survives page navigation (e.g. tapping "Go" leaves the page);
+    // fall back to fetch with keepalive where Beacon is unavailable.
+    if(navigator.sendBeacon){
+      navigator.sendBeacon(TRACK_URL, new Blob([body], {type:'application/json'}));
+    }else{
+      fetch(TRACK_URL, {method:'POST', body, headers:{'Content-Type':'application/json'}, keepalive:true})
+        .catch(()=>{});
+    }
+  }catch(_){ /* never let analytics break a spin */ }
+}
+
 /* ===== TEST MODE — set to false (and remove test entries) before launch ===== */
-window.TEST_MODE = true;
+window.TEST_MODE = false;
 
 /* ============================================================================
    MAKAN MANA — VERIFIED PARTNER MODULE
@@ -1157,17 +1182,6 @@ window.TEST_MODE = true;
      web       — full URL ("https://instagram.com/...")
 */
 let VERIFIED = {
-  "★ TEST — Makan Mana Diner": {
-    tier:'verified', expires:'2030-12-31',
-    info:{
-      tagline:"This is a TEST verified card — remove before launch",
-      dish:"Nasi Lemak Ayam Rendang",
-      price:2,
-      hours:"Daily 8am–10pm",
-      phone:"+60312345678",
-      web:"https://makanmana.example"
-    }
-  },
   // "Village Park Restaurant": {
   //   tier:'verified', expires:'2026-12-31',
   //   info:{
@@ -1382,7 +1396,7 @@ function renderResult(w, others){
       </div>
       <div class="result-actions">
         <button class="btn btn-ghost" id="reSpin">↻ Spin again</button>
-        <a class="btn btn-go" href="${mapUrl}" target="_blank" rel="noopener">Go ➜</a>
+        <a class="btn btn-go" id="goBtn" href="${mapUrl}" target="_blank" rel="noopener">Go ➜</a>
       </div>
     </div>
     ${others.length?`<div class="others">
@@ -1395,9 +1409,12 @@ function renderResult(w, others){
     </div>`:''}
   `;
   $('#reSpin').onclick=()=>{ resetWheel(); setTimeout(doSpin,180); };
+  const goBtn=$('#goBtn');
+  if(goBtn) goBtn.addEventListener('click', ()=> track('go', {name:w.name, verified:isVerified(w)}));
   $$('.mini').forEach(m=>{
     m.onclick=()=>{
       const name=m.dataset.name, lat=m.dataset.lat, lon=m.dataset.lon;
+      track('go', {name});   // runner-up tapped → also strong intent
       window.open(gmapsDir(name, lat, lon),'_blank');
     };
   });
