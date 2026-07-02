@@ -714,7 +714,9 @@ function renderFavourites(){
 
 let userPos = null;          // {lat,lon}
 let lastResults = [];        // sorted candidates
-let recentWinners = [];      // last few picks, to avoid repeats
+let recentWinners = [];      // last few picks, to avoid repeats (persisted)
+try{ recentWinners = JSON.parse(localStorage.getItem('mm_recent_winners')||'[]'); }catch(e){ recentWinners=[]; }
+function saveRecentWinners(){ try{ localStorage.setItem('mm_recent_winners', JSON.stringify(recentWinners)); }catch(e){} }
 
 /* ---------- toast ---------- */
 let toastT;
@@ -872,6 +874,7 @@ async function doSpin(){
     if(settings.openOnly){
       const keep = pool.filter(p=> p.openState!=='closed');   // open + unknown
       if(keep.length) pool = keep;
+      else toast('Everything nearby looks closed right now — showing all spots 🌙');
     }
     // 3) absolute fallback so the wheel always lands
     if(!pool.length) pool = withRoad;
@@ -881,15 +884,15 @@ async function doSpin(){
     lastResults = pool;
 
     // pick a weighted-random winner — verified-aware, self-capped bias.
-    let winner = weightedPickVerified(pool);
-    if(pool.length>3 && recentWinners.length){
-      let tries=0;
-      while(tries<6 && recentWinners.includes(winner.name)){
-        winner = weightedPickVerified(pool); tries++;
-      }
-    }
+    // Repeat avoidance: EXCLUDE recent winners from the candidate set rather
+    // than re-rolling. With distance + verified weighting, one heavy favourite
+    // could survive 6 re-rolls; exclusion makes no-repeat a guarantee.
+    const memory = Math.min(8, Math.max(3, pool.length-1));
+    const fresh = pool.filter(p=> !recentWinners.includes(p.name));
+    let winner = weightedPickVerified(fresh.length ? fresh : pool);
     recentWinners.push(winner.name);
-    if(recentWinners.length>3) recentWinners.shift();
+    while(recentWinners.length > memory) recentWinners.shift();
+    saveRecentWinners();
     noteWinner(winner);
     track('pick', {name:winner.name, verified:isVerified(winner)});
 
@@ -1413,16 +1416,22 @@ function openNow(hours){
     const day=['Su','Mo','Tu','We','Th','Fr','Sa'][now.getDay()];
     const mins=now.getHours()*60+now.getMinutes();
     const parts=hours.split(';');
+    let sawRange=false;
     for(const part of parts){
-      const m=part.match(/([A-Za-z,\-]+)?\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
-      if(!m) continue;
-      const dayspec=m[1]||'Mo-Su';
+      const dm=part.match(/^\s*([A-Za-z,\-]+)?/);
+      const dayspec=(dm&&dm[1])||'Mo-Su';
+      // check EVERY time range in this segment (split shifts like
+      // "Mo-Su 08:00-14:30,17:00-22:00" have more than one)
+      const ranges=[...part.matchAll(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/g)];
+      if(ranges.length) sawRange=true;
       if(!dayMatch(dayspec,day)) continue;
-      const start=+m[2]*60+ +m[3], end=+m[4]*60+ +m[5];
-      const within = end>start ? (mins>=start&&mins<=end) : (mins>=start||mins<=end);
-      if(within) return 'open';
+      for(const m of ranges){
+        const start=+m[1]*60+ +m[2], end=+m[3]*60+ +m[4];
+        const within = end>start ? (mins>=start&&mins<=end) : (mins>=start||mins<=end);
+        if(within) return 'open';
+      }
     }
-    return 'closed';
+    return sawRange ? 'closed' : 'unknown';
   }catch(e){ return 'unknown'; }
 }
 function dayMatch(spec,day){
